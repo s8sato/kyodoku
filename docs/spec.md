@@ -82,7 +82,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ## 6. External Integrations
 
-* **Metadata Sources:** Open Library (default), Google Books, NDL (fallback)
+* **Metadata Sources:** Open Library (default), Google Books (fallback), manual title override as final fallback.
 * **Storage:** PostgreSQL for persistence; Redis for caching and distributed locks.
 * **Hosting:** Docker-based, minimal dependencies.
 

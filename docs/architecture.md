@@ -37,4 +37,4 @@ Discord  →  Bot (Gateway)  →  Postgres/Redis
 
 - Open Library (primary)
 - Google Books (secondary)
-- NDL (fallback)
+- Manual override when both APIs fail
