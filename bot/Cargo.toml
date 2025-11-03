@@ -1,0 +1,8 @@
+[package]
+name = "kyodoku-bot"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+# dependencies to be filled by Codex at implementation stage
