@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use redis::AsyncCommands;
-use serenity::all::{ChannelId, ChannelType, Context, CreateMessage, GuildId};
+use serenity::all::{ChannelId, ChannelType, Context, CreateChannel, CreateMessage, GuildId};
 use tokio::time::sleep;
 use tracing::{error, info, warn};
 
@@ -11,8 +11,8 @@ use crate::isbn::IsbnMetadata;
 use crate::BotState;
 
 const CLEANUP_DELAY_SECONDS: u64 = 120;
-const CLEANUP_TTL_SECONDS: usize = 180;
-const ACTIVATION_TTL_SECONDS: usize = 600;
+const CLEANUP_TTL_SECONDS: i64 = 180;
+const ACTIVATION_TTL_SECONDS: i64 = 600;
 
 pub async fn ensure_isbn_thread(
     ctx: &Context,
@@ -27,12 +27,12 @@ pub async fn ensure_isbn_thread(
     let channel_name = format!("isbn-{}", metadata.isbn_13);
     let topic = format!("Discussion thread for {}", metadata.display_title());
     let channel = guild_id
-        .create_channel(&ctx.http, |builder| {
-            builder
-                .name(truncate_name(&channel_name))
+        .create_channel(
+            &ctx.http,
+            CreateChannel::new(truncate_name(&channel_name))
                 .kind(ChannelType::Text)
-                .topic(topic)
-        })
+                .topic(topic),
+        )
         .await?;
 
     store
@@ -59,11 +59,10 @@ pub async fn ensure_isbn_voice_channel(
 
     let channel_name = format!("reading-{}", metadata.isbn_13);
     let voice = guild_id
-        .create_channel(&ctx.http, |builder| {
-            builder
-                .name(truncate_name(&channel_name))
-                .kind(ChannelType::Voice)
-        })
+        .create_channel(
+            &ctx.http,
+            CreateChannel::new(truncate_name(&channel_name)).kind(ChannelType::Voice),
+        )
         .await?;
 
     store
@@ -101,7 +100,7 @@ async fn schedule_cleanup(
     let key = format!("voice:cleanup:{}", channel_id.get());
     let inserted: bool = conn.set_nx(&key, 1).await?;
     if inserted {
-        conn.expire(&key, CLEANUP_TTL_SECONDS).await?;
+        let _: bool = conn.expire(&key, CLEANUP_TTL_SECONDS).await?;
         let ctx_clone = ctx.clone();
         let state_clone = state.clone();
         let key_clone = key.clone();
@@ -126,7 +125,7 @@ async fn finalize_cleanup(
 ) -> Result<()> {
     if current_voice_members(&ctx, guild_id, channel_id) > 0 {
         let mut conn = state.redis.get_async_connection().await?;
-        let _ = conn.del(&key).await;
+        let _: redis::RedisResult<i32> = conn.del(&key).await;
         return Ok(());
     }
 
@@ -137,7 +136,7 @@ async fn finalize_cleanup(
     state.store.end_voice_session(channel_id).await?;
 
     let mut conn = state.redis.get_async_connection().await?;
-    let _ = conn.del(&key).await;
+    let _: redis::RedisResult<i32> = conn.del(&key).await;
     Ok(())
 }
 
@@ -169,7 +168,7 @@ async fn maybe_notify_activation(
     if !inserted {
         return Ok(());
     }
-    conn.expire(&key, ACTIVATION_TTL_SECONDS).await?;
+    let _: bool = conn.expire(&key, ACTIVATION_TTL_SECONDS).await?;
 
     let notify_result = notify_watchers(&ctx, &state, guild_id, channel_id).await;
     if let Err(err) = notify_result {
@@ -177,7 +176,7 @@ async fn maybe_notify_activation(
             "failed to notify watchers for channel {}: {err:?}",
             channel_id
         );
-        if let Err(del_err) = conn.del(&key).await {
+        if let Err(del_err) = conn.del::<_, i32>(&key).await {
             warn!(
                 "failed to reset activation flag for {}: {del_err:?}",
                 channel_id
