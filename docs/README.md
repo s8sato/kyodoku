@@ -1,14 +1,13 @@
 # Documentation
 
-This directory will contain all specifications and design documents for **kyodoku**.
+This directory houses the living specification and design notes for **kyodoku**. It is the primary reference for agents and
+contributors implementing features in the bot crate.
 
-## Planned Files
+## Contents
 
-- `spec.md` — main functional and technical specification (to be written before implementation)
-- `commands.md` — slash command interface definitions
-- `architecture.md` — diagrams and internal component overview
-- `adr/` — architecture decision records (optional)
+- `spec.md` — full product specification and workflow overview.
+- `commands.md` — concise slash-command contract for Discord reviewers.
+- `architecture.md` — component overview and lifecycle notes.
 
-## Note
-
-No implementation code should be stored here. This directory is exclusively for design and specification documents.
+All project changes should be validated against these documents. Update the relevant file when the implementation diverges from
+the agreed behaviour.
