@@ -37,8 +37,9 @@ Wait until the bot logs show it connected to Discord before proceeding.
 ## 4. Invite the bot to your server
 1. Return to the application in the Developer Portal and open **OAuth2** → **URL Generator**.
 2. In **Scopes**, select `bot` and `applications.commands`. The latter is required for slash commands.
-3. In **Bot Permissions**, grant only the permissions the bot needs. For testing the sample commands, `Send Messages` is sufficient.
+3. In **Bot Permissions**, grant only the permissions the bot needs. For testing the sample commands, select both `Send Messages` and `Manage Channels` so the bot can create the text and voice channels used by `/isbn`.
 4. Copy the generated URL, open it in your browser, choose the server where you have the “Manage Server” permission, and authorize the bot.
+   - If you previously invited the bot without `Manage Channels`, reinvite it with the updated permissions so slash commands can provision their channels successfully.
 5. After authorization, the bot user appears in the server member list.
 
 ## 5. Test the commands
