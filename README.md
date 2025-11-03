@@ -1,39 +1,44 @@
 # kyodoku
 
-**kyodoku** is a minimal repository scaffold for a Discord bot that creates and removes on-demand voice channels based on ISBN codes.
-It is designed for implementation by a code-generation agent (e.g. Codex) following an external specification.
+**kyodoku** is a Discord bot that spins up ad-hoc reading rooms for books identified by ISBN. It keeps a persistent text thread
+per ISBN, creates temporary voice channels for live discussions, and notifies interested readers when a session becomes active.
 
-## Overview
+The project is maintained with a *spec-first* workflow — refer to [`docs/spec.md`](docs/spec.md) for the authoritative product
+requirements.
 
-* Purpose: A *spec-driven* project starter. Contains only basic documentation and licensing.
-* Language (planned): Rust
-* Core stack (planned): Serenity SDK, PostgreSQL, Redis
-* Spec file will be added later under `docs/spec.md`.
+## Features
 
-## Directory Structure
+- Slash commands for `/isbn` and `/watch` with metadata lookup via Open Library and Google Books.
+- Automatic creation/reuse of text threads and voice channels scoped to each ISBN.
+- Graceful voice channel cleanup after inactivity and Redis-backed deduplication for watcher notifications.
+- PostgreSQL persistence with SQLx migrations.
+
+## Getting Started
+
+1. Copy [`bot/.env.example`](bot/.env.example) to `bot/.env` and fill in your Discord credentials.
+2. Start the development stack:
+
+   ```bash
+   docker compose -f infra/docker/docker-compose.yml up --build
+   ```
+
+3. Invite the Discord application to your guild and interact using the `/isbn` and `/watch` commands.
+
+The bot crate can also be run locally with `cargo run -p kyodoku-bot` once PostgreSQL and Redis are available.
+
+## Repository Layout
 
 ```plain
 kyodoku/
-├─ README.md          # This file
-├─ LICENSE            # MIT license
-├─ .gitignore         # Basic ignore rules
-├─ .gitattributes     # LF normalization
-├─ docs/
-│  └─ README.md       # Placeholder for future spec
-├─ CONTRIBUTING.md    # Guidelines for later development
-└─ INIT.md            # Setup notes for maintainers
+├─ bot/                # Discord bot implementation (Rust)
+│  ├─ migrations/      # SQLx migrations
+│  └─ src/             # Bot entrypoint and modules
+├─ docs/               # Living specification and architecture docs
+├─ infra/docker/       # Local development environment
+├─ Cargo.toml          # Workspace manifest
+└─ README.md           # Project overview (this file)
 ```
 
 ## License
 
 MIT License © 2025 Shunkichi Sato
-
-## Notes
-
-* Implementation will begin after the specification (`/docs/spec.md`) is finalized.
-* Use this repository as a **blank bootstrap**, not as a running codebase.
-* Future milestones:
-
-  * `/bot` crate (Rust)
-  * `/db/migrations` for schema setup
-  * CI configuration (format, lint, test)

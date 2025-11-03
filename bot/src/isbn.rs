@@ -53,36 +53,66 @@ impl fmt::Display for MetadataSource {
 }
 
 pub fn normalize(code: &str) -> Result<NormalizedIsbn> {
-    let digits: String = code.chars().filter(|c| c.is_ascii_digit()).collect();
-    if digits.len() == 10 {
-        let isbn_10 = digits;
-        let isbn_13 = isbn10_to_13(&isbn_10)?;
-        Ok(NormalizedIsbn {
-            isbn_13,
-            isbn_10: Some(isbn_10),
-        })
-    } else if digits.len() == 13 {
-        if !is_valid_isbn13(&digits) {
-            return Err(anyhow!("invalid ISBN-13"));
+    let mut cleaned = String::new();
+    for ch in code.chars() {
+        if ch.is_ascii_digit() {
+            cleaned.push(ch);
+        } else if matches!(ch, 'x' | 'X') {
+            cleaned.push('X');
         }
-        Ok(NormalizedIsbn {
-            isbn_13: digits,
-            isbn_10: None,
-        })
-    } else {
-        Err(anyhow!("ISBN must be 10 or 13 digits"))
+    }
+
+    match cleaned.len() {
+        10 => {
+            if !is_valid_isbn10(&cleaned) {
+                return Err(anyhow!("invalid ISBN-10"));
+            }
+            let isbn_13 = isbn10_to_13(&cleaned)?;
+            Ok(NormalizedIsbn {
+                isbn_13,
+                isbn_10: Some(cleaned),
+            })
+        }
+        13 => {
+            if !is_valid_isbn13(&cleaned) {
+                return Err(anyhow!("invalid ISBN-13"));
+            }
+            let isbn_10 = isbn13_to_10(&cleaned);
+            Ok(NormalizedIsbn {
+                isbn_13: cleaned,
+                isbn_10,
+            })
+        }
+        _ => Err(anyhow!("ISBN must be 10 or 13 characters")),
     }
 }
 
 fn isbn10_to_13(isbn_10: &str) -> Result<String> {
     if isbn_10.len() != 10 {
-        return Err(anyhow!("ISBN-10 must have 10 digits"));
+        return Err(anyhow!("ISBN-10 must have 10 characters"));
     }
+    let body = &isbn_10[..9];
     let mut prefix = String::from("978");
-    prefix.push_str(&isbn_10[..9]);
+    prefix.push_str(body);
     let check = compute_isbn13_check_digit(prefix.as_bytes());
     prefix.push(char::from(b'0' + check as u8));
     Ok(prefix)
+}
+
+fn isbn13_to_10(isbn_13: &str) -> Option<String> {
+    if !isbn_13.starts_with("978") {
+        return None;
+    }
+    let body = &isbn_13[3..12];
+    if !body.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let check = compute_isbn10_check_digit(body)?;
+    let check_char = match check {
+        10 => 'X',
+        value => char::from(b'0' + value as u8),
+    };
+    Some(format!("{}{}", body, check_char))
 }
 
 fn compute_isbn13_check_digit(bytes: &[u8]) -> u32 {
@@ -101,6 +131,37 @@ fn compute_isbn13_check_digit(bytes: &[u8]) -> u32 {
     } else {
         10 - rem
     }
+}
+
+fn compute_isbn10_check_digit(body: &str) -> Option<u32> {
+    if body.len() != 9 || !body.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let mut sum = 0u32;
+    for (idx, ch) in body.chars().enumerate() {
+        let digit = ch.to_digit(10).unwrap();
+        sum += digit * (10 - idx as u32);
+    }
+    let remainder = sum % 11;
+    let check = if remainder == 0 { 0 } else { 11 - remainder };
+    Some(check)
+}
+
+fn is_valid_isbn10(isbn: &str) -> bool {
+    if isbn.len() != 10 {
+        return false;
+    }
+    let mut sum = 0u32;
+    for (idx, ch) in isbn.chars().enumerate() {
+        let weight = 10 - idx as u32;
+        let value = match ch {
+            'X' if idx == 9 => 10,
+            c if c.is_ascii_digit() => c.to_digit(10).unwrap(),
+            _ => return false,
+        };
+        sum += value * weight;
+    }
+    sum % 11 == 0
 }
 
 fn is_valid_isbn13(isbn: &str) -> bool {
@@ -235,4 +296,30 @@ struct GoogleVolumeInfo {
     subtitle: Option<String>,
     #[serde(default)]
     authors: Option<Vec<String>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_isbn10_with_x_check_digit() {
+        let normalized = normalize("0-8044-2957-X").expect("normalize succeeds");
+        assert_eq!(normalized.isbn_13, "9780804429573");
+        assert_eq!(normalized.isbn_10.as_deref(), Some("080442957X"));
+    }
+
+    #[test]
+    fn normalizes_isbn13_and_derives_isbn10() {
+        let normalized = normalize("9780306406157").expect("normalize succeeds");
+        assert_eq!(normalized.isbn_13, "9780306406157");
+        assert_eq!(normalized.isbn_10.as_deref(), Some("0306406152"));
+    }
+
+    #[test]
+    fn rejects_invalid_codes() {
+        assert!(normalize("12345").is_err());
+        assert!(normalize("9780306406158").is_err());
+        assert!(normalize("0306406153").is_err());
+    }
 }
