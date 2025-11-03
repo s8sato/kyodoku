@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use serenity::all::{
-    ApplicationCommandInteraction, CommandDataOptionValue, CommandOptionType,
+    CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
     Context as SerenityContext, CreateCommand, CreateCommandOption, CreateInteractionResponse,
-    CreateInteractionResponseDefer, CreateInteractionResponseFollowup, InteractionResponseFlags,
+    CreateInteractionResponseFollowup, CreateInteractionResponseMessage, InteractionResponseFlags,
+    MessageFlags,
 };
 use tracing::error;
 
@@ -13,25 +14,21 @@ use crate::util;
 use crate::BotState;
 
 pub async fn register_commands(http: &serenity::http::Http) -> Result<()> {
-    serenity::all::Command::set_global_application_commands(http, |commands| {
-        commands
-            .create_command(|cmd| build_isbn_command(cmd))
-            .create_command(|cmd| build_watch_command(cmd))
-    })
-    .await?;
+    let commands = vec![build_isbn_command(), build_watch_command()];
+    serenity::all::Command::set_global_commands(http, commands).await?;
     Ok(())
 }
 
 pub async fn handle_interaction(
     ctx: &SerenityContext,
-    command: &ApplicationCommandInteraction,
+    command: &CommandInteraction,
     state: Arc<BotState>,
 ) -> Result<()> {
     command
         .create_response(
             ctx,
             CreateInteractionResponse::Defer(
-                CreateInteractionResponseDefer::new().flags(InteractionResponseFlags::EPHEMERAL),
+                CreateInteractionResponseMessage::new().flags(InteractionResponseFlags::EPHEMERAL),
             ),
         )
         .await?;
@@ -55,16 +52,15 @@ pub async fn handle_interaction(
             &ctx.http,
             CreateInteractionResponseFollowup::new()
                 .content(content)
-                .flags(InteractionResponseFlags::EPHEMERAL),
+                .flags(MessageFlags::EPHEMERAL),
         )
         .await?;
 
     Ok(())
 }
 
-fn build_isbn_command(mut cmd: CreateCommand) -> CreateCommand {
-    cmd = cmd
-        .name("isbn")
+fn build_isbn_command() -> CreateCommand {
+    CreateCommand::new("isbn")
         .description("Create or reuse a voice channel for an ISBN")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "code", "ISBN-10 or ISBN-13")
@@ -77,13 +73,11 @@ fn build_isbn_command(mut cmd: CreateCommand) -> CreateCommand {
                 "Override title if lookup fails",
             )
             .required(false),
-        );
-    cmd
+        )
 }
 
-fn build_watch_command(mut cmd: CreateCommand) -> CreateCommand {
-    cmd = cmd
-        .name("watch")
+fn build_watch_command() -> CreateCommand {
+    CreateCommand::new("watch")
         .description("Manage ISBN watchlist")
         .add_option(
             CreateCommandOption::new(
@@ -111,13 +105,12 @@ fn build_watch_command(mut cmd: CreateCommand) -> CreateCommand {
             CommandOptionType::SubCommand,
             "list",
             "List watched ISBNs",
-        ));
-    cmd
+        ))
 }
 
 async fn handle_isbn(
     ctx: &SerenityContext,
-    command: &ApplicationCommandInteraction,
+    command: &CommandInteraction,
     state: Arc<BotState>,
 ) -> Result<String> {
     let guild_id = command
@@ -143,8 +136,8 @@ async fn handle_isbn(
 }
 
 async fn handle_watch(
-    ctx: &SerenityContext,
-    command: &ApplicationCommandInteraction,
+    _ctx: &SerenityContext,
+    command: &CommandInteraction,
     state: Arc<BotState>,
 ) -> Result<String> {
     let guild_id = command
@@ -154,10 +147,13 @@ async fn handle_watch(
     let Some(option) = command.data.options.first() else {
         return Err(anyhow!("Missing watch subcommand"));
     };
+    let CommandDataOptionValue::SubCommand(sub_options) = &option.value else {
+        return Err(anyhow!("Unexpected option for watch command"));
+    };
 
     match option.name.as_str() {
         "add" => {
-            let code = require_string_option(&option.options, "code")?;
+            let code = require_string_option(sub_options, "code")?;
             let normalized = isbn::normalize(code)?;
             let metadata = isbn::lookup_metadata(&state.http_client, &normalized, None).await?;
             state.store.upsert_isbn(&metadata).await?;
@@ -172,7 +168,7 @@ async fn handle_watch(
             ))
         }
         "remove" => {
-            let code = require_string_option(&option.options, "code")?;
+            let code = require_string_option(sub_options, "code")?;
             let normalized = isbn::normalize(code)?;
             state
                 .store
@@ -195,26 +191,25 @@ async fn handle_watch(
     }
 }
 
-fn require_string_option<'a>(
-    options: &'a [serenity::all::ApplicationCommandInteractionDataOption],
-    name: &str,
-) -> Result<&'a str> {
+fn require_string_option<'a>(options: &'a [CommandDataOption], name: &str) -> Result<&'a str> {
     options
         .iter()
-        .find(|opt| opt.name == name)
-        .and_then(|opt| match opt.value.as_ref()? {
-            CommandDataOptionValue::String(value) => Some(value.as_str()),
+        .find_map(|opt| match (&opt.value, opt.name.as_str()) {
+            (CommandDataOptionValue::String(value), option_name) if option_name == name => {
+                Some(value.as_str())
+            }
             _ => None,
         })
         .context(format!("Missing required option '{name}'"))
 }
 
-fn optional_string_option<'a>(
-    options: &'a [serenity::all::ApplicationCommandInteractionDataOption],
-    name: &str,
-) -> Option<&'a str> {
-    options.iter().find_map(|opt| match opt.value.as_ref()? {
-        CommandDataOptionValue::String(value) if opt.name == name => Some(value.as_str()),
-        _ => None,
-    })
+fn optional_string_option<'a>(options: &'a [CommandDataOption], name: &str) -> Option<&'a str> {
+    options
+        .iter()
+        .find_map(|opt| match (&opt.value, opt.name.as_str()) {
+            (CommandDataOptionValue::String(value), option_name) if option_name == name => {
+                Some(value.as_str())
+            }
+            _ => None,
+        })
 }

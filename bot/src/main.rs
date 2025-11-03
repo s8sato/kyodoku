@@ -9,7 +9,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use dotenvy::dotenv;
 use redis::Client as RedisClient;
-use serenity::all::{Client, Context, GatewayIntents, GuildId, Interaction, Ready, VoiceState};
+use serenity::all::{
+    ApplicationId, Client, Context, GatewayIntents, Interaction, Ready, VoiceState,
+};
 use serenity::prelude::TypeMapKey;
 use songbird::SerenityInit;
 use tokio::signal;
@@ -68,7 +70,7 @@ impl serenity::prelude::EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        let Some(command) = interaction.as_application_command() else {
+        let Some(command) = interaction.as_command() else {
             return;
         };
 
@@ -87,13 +89,7 @@ impl serenity::prelude::EventHandler for Handler {
         }
     }
 
-    async fn voice_state_update(
-        &self,
-        ctx: Context,
-        guild_id: Option<GuildId>,
-        old: Option<VoiceState>,
-        new: VoiceState,
-    ) {
+    async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
         let state = {
             let data = ctx.data.read().await;
             data.get::<StateKey>().cloned()
@@ -104,9 +100,9 @@ impl serenity::prelude::EventHandler for Handler {
             return;
         };
 
-        let guild = guild_id
-            .or(new.guild_id)
-            .or_else(|| old.as_ref().and_then(|v| v.guild_id));
+        let guild = new
+            .guild_id
+            .or_else(|| old.as_ref().and_then(|state| state.guild_id));
         let Some(guild_id) = guild else {
             return;
         };
@@ -150,7 +146,7 @@ async fn main() -> Result<()> {
         | GatewayIntents::GUILD_VOICE_STATES
         | GatewayIntents::GUILD_MESSAGES;
     let mut client = Client::builder(&config.discord_token, intents)
-        .application_id(config.application_id)
+        .application_id(ApplicationId::new(config.application_id))
         .event_handler(Handler)
         .register_songbird()
         .await?;
