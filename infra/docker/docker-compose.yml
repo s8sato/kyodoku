@@ -1,0 +1,25 @@
+version: "3.8"
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kyodoku
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+
+  bot:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.bot
+    env_file:
+      - ../../bot/.env
+    depends_on:
+      - db
+      - redis
