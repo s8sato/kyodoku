@@ -220,6 +220,7 @@ async fn notify_watchers(
         .unwrap_or_else(|| format!("Session {}", isbn));
 
     let thread_channel = state.store.get_thread_id(guild_id, &isbn).await?;
+    let notification_channel = state.store.get_notification_channel(guild_id).await?;
     let content = format_dm_content(&title, thread_channel, channel_id);
 
     for watcher in watchers {
@@ -228,6 +229,21 @@ async fn notify_watchers(
                 "failed to send DM for reading session {} to {}: {err:?}",
                 isbn, watcher
             );
+
+            if let Some(channel_id) = notification_channel {
+                if let Err(channel_err) = channel_id
+                    .send_message(
+                        &ctx.http,
+                        CreateMessage::new().content(format!("<@{}> {}", watcher.get(), content)),
+                    )
+                    .await
+                {
+                    warn!(
+                        "failed to send fallback notification for {} to {}: {channel_err:?}",
+                        watcher, channel_id
+                    );
+                }
+            }
         }
     }
 
