@@ -68,7 +68,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 ### Session Deletion
 
 1. Monitor `VoiceStateUpdate` events.
-2. When member count = 0, start a 2-minute grace timer.
+2. Start a grace timer (defaults to **1 minute** via `VOICE_CLEANUP_DELAY_SECONDS`) when a channel is first created and any time the member count returns to 0.
 3. If still empty, delete the channel.
 4. Log `ended_at` timestamp in `voice_sessions`.
 
