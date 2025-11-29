@@ -137,7 +137,7 @@ async fn handle_open(
     let voice_id = util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
 
     Ok(format!(
-        "**{}**\nText channel: <#{}>\nVoice channel: <#{}>",
+        "Opened a reading session for **{}**.\nText channel: <#{}>\nVoice channel: <#{}>",
         metadata.display_title(),
         thread_id,
         voice_id
@@ -183,10 +183,10 @@ async fn handle_watch(
                     .add_watch(guild_id, user_id, &metadata.isbn_13)
                     .await?;
 
-                added.push(format!(
-                    "**{}** ({})",
-                    metadata.display_title(),
-                    metadata.isbn_13
+                added.push(format_watch_entry(
+                    &metadata.title,
+                    metadata.subtitle.as_deref(),
+                    &metadata.isbn_13,
                 ));
             }
 
@@ -211,12 +211,21 @@ async fn handle_watch(
                     continue;
                 }
 
+                let entry = match state.store.fetch_isbn(&normalized.isbn_13).await? {
+                    Some(record) => format_watch_entry(
+                        &record.title,
+                        record.subtitle.as_deref(),
+                        &record.isbn_13,
+                    ),
+                    None => format_watch_entry(&normalized.isbn_13, None, &normalized.isbn_13),
+                };
+
                 state
                     .store
                     .remove_watch(guild_id, user_id, &normalized.isbn_13)
                     .await?;
 
-                removed.push(normalized.isbn_13);
+                removed.push(entry);
             }
 
             if removed.is_empty() {
@@ -233,7 +242,20 @@ async fn handle_watch(
             if watches.is_empty() {
                 Ok("Your watchlist is empty.".to_string())
             } else {
-                Ok(format!("You are watching: {}", watches.join(", ")))
+                let mut entries = Vec::new();
+                for isbn_13 in watches {
+                    let entry = match state.store.fetch_isbn(&isbn_13).await? {
+                        Some(record) => format_watch_entry(
+                            &record.title,
+                            record.subtitle.as_deref(),
+                            &record.isbn_13,
+                        ),
+                        None => format_watch_entry(&isbn_13, None, &isbn_13),
+                    };
+                    entries.push(entry);
+                }
+
+                Ok(format!("You are watching: {}", entries.join(", ")))
             }
         }
         other => Err(anyhow!("Unknown watch action: {other}")),
@@ -268,4 +290,15 @@ fn parse_codes(input: &str) -> Vec<&str> {
         .split(|ch: char| ch.is_whitespace() || ch == ',' || ch == ';')
         .filter(|part| !part.is_empty())
         .collect()
+}
+
+fn display_title(title: &str, subtitle: Option<&str>) -> String {
+    match subtitle {
+        Some(subtitle) if !subtitle.is_empty() => format!("{}: {}", title, subtitle),
+        _ => title.to_string(),
+    }
+}
+
+fn format_watch_entry(title: &str, subtitle: Option<&str>, isbn_13: &str) -> String {
+    format!("**{}** ({})", display_title(title, subtitle), isbn_13)
 }
