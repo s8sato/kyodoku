@@ -20,11 +20,11 @@ Discord  →  Bot (Gateway)  →  Postgres/Redis
 
 ## 3. Channel Lifecycle
 
-1. `/isbn` invoked.
+1. `/open` invoked.
 2. ISBN normalized → metadata fetched → VC created.
 3. Users join VC.
 4. When member count = 0 for 2 minutes, VC auto-deletes.
-5. Text thread persists.
+5. Text channel persists.
 
 ## 4. Module Breakdown (planned)
 

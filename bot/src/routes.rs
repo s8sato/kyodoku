@@ -15,7 +15,7 @@ use crate::util;
 use crate::BotState;
 
 pub async fn register_commands(http: &serenity::http::Http) -> Result<()> {
-    let commands = vec![build_isbn_command(), build_watch_command()];
+    let commands = vec![build_open_command(), build_watch_command()];
     serenity::all::Command::set_global_commands(http, commands).await?;
     Ok(())
 }
@@ -35,7 +35,7 @@ pub async fn handle_interaction(
         .await?;
 
     let response = match command.data.name.as_str() {
-        "isbn" => handle_isbn(ctx, command, state.clone()).await,
+        "open" => handle_open(ctx, command, state.clone()).await,
         "watch" => handle_watch(ctx, command, state.clone()).await,
         other => Err(anyhow!("Unknown command: {other}")),
     };
@@ -60,9 +60,9 @@ pub async fn handle_interaction(
     Ok(())
 }
 
-fn build_isbn_command() -> CreateCommand {
-    CreateCommand::new("isbn")
-        .description("Create or reuse a voice channel for an ISBN")
+fn build_open_command() -> CreateCommand {
+    CreateCommand::new("open")
+        .description("Create or reuse a reading session for an ISBN")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "code", "ISBN-10 or ISBN-13")
                 .required(true),
@@ -117,7 +117,7 @@ fn build_watch_command() -> CreateCommand {
         ))
 }
 
-async fn handle_isbn(
+async fn handle_open(
     ctx: &SerenityContext,
     command: &CommandInteraction,
     state: Arc<BotState>,
@@ -137,7 +137,7 @@ async fn handle_isbn(
     let voice_id = util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
 
     Ok(format!(
-        "**{}**\nText thread: <#{}>\nVoice channel: <#{}>",
+        "**{}**\nText channel: <#{}>\nVoice channel: <#{}>",
         metadata.display_title(),
         thread_id,
         voice_id
