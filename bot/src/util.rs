@@ -263,9 +263,38 @@ async fn send_dm(http: &serenity::http::Http, user_id: UserId, content: &str) ->
 
 fn truncate_name(name: &str) -> String {
     const MAX_LEN: usize = 90;
-    if name.len() > MAX_LEN {
-        name[..MAX_LEN].to_string()
-    } else {
-        name.to_string()
+    if name.len() <= MAX_LEN {
+        return name.to_string();
+    }
+
+    name
+        .char_indices()
+        .take_while(|(idx, _)| *idx < MAX_LEN)
+        .map(|(_, ch)| ch)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_name;
+
+    #[test]
+    fn truncate_name_preserves_ascii_boundaries() {
+        let name = "a".repeat(100);
+        let truncated = truncate_name(&name);
+
+        assert_eq!(truncated.len(), 90);
+        assert!(truncated.chars().all(|ch| ch == 'a'));
+    }
+
+    #[test]
+    fn truncate_name_preserves_char_boundaries_for_multibyte() {
+        // "本" is 3 bytes; ensure we don't panic and keep complete characters.
+        let name = "本".repeat(50); // 150 bytes
+        let truncated = truncate_name(&name);
+
+        assert!(truncated.len() < name.len());
+        assert!(truncated.len() % "本".len() == 0);
+        assert!(truncated.chars().all(|ch| ch == '本'));
     }
 }
