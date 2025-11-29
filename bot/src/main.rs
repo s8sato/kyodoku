@@ -26,6 +26,7 @@ pub struct Config {
     pub application_id: u64,
     pub database_url: String,
     pub redis_url: String,
+    pub reading_session_activation_threshold: usize,
 }
 
 impl Config {
@@ -34,12 +35,19 @@ impl Config {
         let application_id = std::env::var("APPLICATION_ID")?.parse()?;
         let database_url = std::env::var("DATABASE_URL")?;
         let redis_url = std::env::var("REDIS_URL")?;
+        let reading_session_activation_threshold =
+            std::env::var("READING_SESSION_ACTIVATION_THRESHOLD")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(1);
 
         Ok(Self {
             discord_token,
             application_id,
             database_url,
             redis_url,
+            reading_session_activation_threshold,
         })
     }
 }
