@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
@@ -83,22 +84,30 @@ fn build_watch_command() -> CreateCommand {
             CreateCommandOption::new(
                 CommandOptionType::SubCommand,
                 "add",
-                "Add an ISBN to your watchlist",
+                "Add one or more ISBNs to your watchlist",
             )
             .add_sub_option(
-                CreateCommandOption::new(CommandOptionType::String, "code", "ISBN-10 or ISBN-13")
-                    .required(true),
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "codes",
+                    "ISBN-10 or ISBN-13 values (separate with spaces or commas)",
+                )
+                .required(true),
             ),
         )
         .add_option(
             CreateCommandOption::new(
                 CommandOptionType::SubCommand,
                 "remove",
-                "Remove an ISBN from your watchlist",
+                "Remove one or more ISBNs from your watchlist",
             )
             .add_sub_option(
-                CreateCommandOption::new(CommandOptionType::String, "code", "ISBN-10 or ISBN-13")
-                    .required(true),
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "codes",
+                    "ISBN-10 or ISBN-13 values (separate with spaces or commas)",
+                )
+                .required(true),
             ),
         )
         .add_option(CreateCommandOption::new(
@@ -153,31 +162,71 @@ async fn handle_watch(
 
     match option.name.as_str() {
         "add" => {
-            let code = require_string_option(sub_options, "code")?;
-            let normalized = isbn::normalize(code)?;
-            let metadata = isbn::lookup_metadata(&state.http_client, &normalized, None).await?;
-            state.store.upsert_isbn(&metadata).await?;
-            state
-                .store
-                .add_watch(guild_id, user_id, &metadata.isbn_13)
-                .await?;
-            Ok(format!(
-                "Added **{}** ({}) to your watchlist",
-                metadata.display_title(),
-                metadata.isbn_13
-            ))
+            let codes = parse_codes(require_string_option(sub_options, "codes")?);
+            if codes.is_empty() {
+                return Err(anyhow!("At least one ISBN code is required"));
+            }
+
+            let mut added = Vec::new();
+            let mut seen = HashSet::new();
+
+            for code in codes {
+                let normalized = isbn::normalize(code)?;
+                if !seen.insert(normalized.isbn_13.clone()) {
+                    continue;
+                }
+
+                let metadata = isbn::lookup_metadata(&state.http_client, &normalized, None).await?;
+                state.store.upsert_isbn(&metadata).await?;
+                state
+                    .store
+                    .add_watch(guild_id, user_id, &metadata.isbn_13)
+                    .await?;
+
+                added.push(format!(
+                    "**{}** ({})",
+                    metadata.display_title(),
+                    metadata.isbn_13
+                ));
+            }
+
+            if added.is_empty() {
+                Ok("No new ISBNs added to your watchlist.".to_string())
+            } else {
+                Ok(format!("Added {} to your watchlist", added.join(", ")))
+            }
         }
         "remove" => {
-            let code = require_string_option(sub_options, "code")?;
-            let normalized = isbn::normalize(code)?;
-            state
-                .store
-                .remove_watch(guild_id, user_id, &normalized.isbn_13)
-                .await?;
-            Ok(format!(
-                "Removed {} from your watchlist",
-                normalized.isbn_13
-            ))
+            let codes = parse_codes(require_string_option(sub_options, "codes")?);
+            if codes.is_empty() {
+                return Err(anyhow!("At least one ISBN code is required"));
+            }
+
+            let mut removed = Vec::new();
+            let mut seen = HashSet::new();
+
+            for code in codes {
+                let normalized = isbn::normalize(code)?;
+                if !seen.insert(normalized.isbn_13.clone()) {
+                    continue;
+                }
+
+                state
+                    .store
+                    .remove_watch(guild_id, user_id, &normalized.isbn_13)
+                    .await?;
+
+                removed.push(normalized.isbn_13);
+            }
+
+            if removed.is_empty() {
+                Ok("No ISBNs removed from your watchlist.".to_string())
+            } else {
+                Ok(format!(
+                    "Removed {} from your watchlist",
+                    removed.join(", ")
+                ))
+            }
         }
         "list" => {
             let watches = state.store.list_watches(guild_id, user_id).await?;
@@ -212,4 +261,11 @@ fn optional_string_option<'a>(options: &'a [CommandDataOption], name: &str) -> O
             }
             _ => None,
         })
+}
+
+fn parse_codes(input: &str) -> Vec<&str> {
+    input
+        .split(|ch: char| ch.is_whitespace() || ch == ',' || ch == ';')
+        .filter(|part| !part.is_empty())
+        .collect()
 }
