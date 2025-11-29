@@ -13,18 +13,32 @@ Display channels in the following order to keep navigation consistent:
 Use the landing page to orient newcomers. A concise template is shown below:
 
 ```md
-# ようこそ、kyodokuへ
+# Welcome to the Shared Reading Server :books:
+A place where people reading the same book can loosely connect.
 
-このサーバーでは ISBN ごとに専用の音声・テキストチャンネルを用意しています。
+## :blue_book: Create a Reading Space: `/open <ISBN>`
+- Generates a **voice channel (ephemeral)** and  
+  a **text channel (persistent)** for the specified book
+- If the channels already exist, you will be guided to them
+- The voice channel automatically disappears after a period of inactivity (0 participants)
 
-- `/open isbn:<ISBN>` で新しいセッションを作成すると、対応する音声・テキストチャンネルが自動生成されます。
-- 音声チャンネルは揮発的で、セッションが終わると消えます。
-- テキストチャンネルは永続的で、議事メモやリンクの共有に使えます。
+## :eye_in_speech_bubble: Watchlist & Notifications
+### `/watch list`
+- Shows your current watchlist  
+- When a watched book’s voice channel becomes active, you will receive a **DM notification**
+### `/watch add <ISBN1> <ISBN2> ...`
+- Adds one or more books to your watchlist
+### `/watch remove <ISBN1> <ISBN2> ...`
+- Removes one or more books from your watchlist
 
-ガイドライン
-- 他の参加者がいるか確認してから参加してください。
-- 書誌情報は ISBN を使って一意にしてください。
-- 参加後は `/watch` でセッション通知をオンにできます。
+## :bell: Enabling DM Notifications
+To receive active session alerts from the kyodoku app, please enable DMs in Discord:
+**User Settings → Privacy & Safety → "Allow direct messages from server members"**
+For per-server settings:  
+Right-click server name → **Privacy Settings → Allow DMs**
+
+-# All interactions are done through slash commands. Take your time—and enjoy reading at your own pace.
+
 ```
 
 ## Enabling direct messages for active session notifications
