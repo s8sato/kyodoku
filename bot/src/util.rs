@@ -267,8 +267,7 @@ fn truncate_name(name: &str) -> String {
         return name.to_string();
     }
 
-    name
-        .char_indices()
+    name.char_indices()
         .take_while(|(idx, _)| *idx < MAX_LEN)
         .map(|(_, ch)| ch)
         .collect()
