@@ -20,7 +20,7 @@ Discord  →  Bot (Gateway)  →  Postgres/Redis
 
 ## 3. Channel Lifecycle
 
-1. `/isbn` is invoked.
+1. `/open` is invoked.
 2. The ISBN is normalized, metadata is fetched, and the VC/TC are created if they do not already exist.
 3. Users may join the voice channel.
 4. When the member count remains 0 for a certain duration, the voice channel is automatically deleted.
