@@ -40,13 +40,3 @@ Right-click server name → **Privacy Settings → Allow DMs**
 -# All interactions are done through slash commands. Take your time—and enjoy reading at your own pace.
 
 ```
-
-## Enabling direct messages for active session notifications
-Kyodoku sends direct messages to notify users about active sessions. Ensure members can receive these DMs:
-
-1. In the Discord client, open **User Settings** → **Privacy & Safety**.
-2. Enable **Allow direct messages from server members** for the server that hosts kyodoku.
-3. Confirm the kyodoku application has permission to send direct messages (no blocking or privacy overrides).
-4. Encourage members to leave DND or focused modes to avoid missing alerts.
-
-With DM permissions enabled and the channel structure above, members can quickly find the right ISBN channel and stay informed about active sessions.
