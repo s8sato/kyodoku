@@ -12,8 +12,7 @@ use tracing::{error, info, warn};
 use crate::isbn::IsbnMetadata;
 use crate::BotState;
 
-const CLEANUP_DELAY_SECONDS: u64 = 120;
-const CLEANUP_TTL_SECONDS: i64 = 180;
+const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
 const ACTIVATION_TTL_SECONDS: i64 = 600;
 
 pub async fn ensure_isbn_thread(
@@ -48,9 +47,10 @@ pub async fn ensure_isbn_voice_channel(
     ctx: &Context,
     guild_id: GuildId,
     metadata: &IsbnMetadata,
-    store: &crate::store::Store,
+    state: Arc<BotState>,
 ) -> Result<ChannelId> {
-    if let Some(channel) = store
+    if let Some(channel) = state
+        .store
         .get_active_voice_channel(guild_id, &metadata.isbn_13)
         .await?
     {
@@ -67,9 +67,11 @@ pub async fn ensure_isbn_voice_channel(
         )
         .await?;
 
-    store
+    state
+        .store
         .start_voice_session(guild_id, voice.id, &metadata.isbn_13)
         .await?;
+    schedule_cleanup(ctx.clone(), state.clone(), guild_id, voice.id).await?;
 
     Ok(voice.id)
 }
@@ -98,16 +100,18 @@ async fn schedule_cleanup(
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<()> {
+    let cleanup_delay = state.config.voice_cleanup_delay_seconds;
+    let cleanup_ttl = cleanup_delay.saturating_add(CLEANUP_TTL_BUFFER_SECONDS);
     let mut conn = state.redis.get_async_connection().await?;
     let key = format!("voice:cleanup:{}", channel_id.get());
     let inserted: bool = conn.set_nx(&key, 1).await?;
     if inserted {
-        let _: bool = conn.expire(&key, CLEANUP_TTL_SECONDS).await?;
+        let _: bool = conn.expire(&key, cleanup_ttl as i64).await?;
         let ctx_clone = ctx.clone();
         let state_clone = state.clone();
         let key_clone = key.clone();
         tokio::spawn(async move {
-            sleep(Duration::from_secs(CLEANUP_DELAY_SECONDS)).await;
+            sleep(Duration::from_secs(cleanup_delay)).await;
             if let Err(err) =
                 finalize_cleanup(ctx_clone, state_clone, guild_id, channel_id, key_clone).await
             {
