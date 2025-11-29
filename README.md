@@ -1,6 +1,6 @@
 # kyodoku
 
-**kyodoku** is a Discord bot that spins up ad-hoc reading rooms for books identified by ISBN. It keeps a persistent text thread
+**kyodoku** is a Discord bot that spins up ad-hoc reading rooms for books identified by ISBN. It keeps a persistent text channel
 per ISBN, creates temporary voice channels for live discussions, and notifies interested readers when a session becomes active.
 
 The project is maintained with a *spec-first* workflow — refer to [`docs/spec.md`](docs/spec.md) for the authoritative product
@@ -8,8 +8,8 @@ requirements.
 
 ## Features
 
-- Slash commands for `/isbn` and `/watch` with metadata lookup via Open Library and Google Books.
-- Automatic creation/reuse of text threads and voice channels scoped to each ISBN.
+- Slash commands for `/open` and `/watch` with metadata lookup via Open Library and Google Books.
+- Automatic creation/reuse of text channels and voice channels scoped to each ISBN.
 - Graceful voice channel cleanup after inactivity and Redis-backed deduplication for watcher notifications.
 - PostgreSQL persistence with SQLx migrations.
 
@@ -22,7 +22,7 @@ requirements.
    docker compose -f infra/docker/docker-compose.yml up --build
    ```
 
-3. Invite the Discord application to your guild and interact using the `/isbn` and `/watch` commands.
+3. Invite the Discord application to your guild and interact using the `/open` and `/watch` commands.
 
 The bot crate can also be run locally with `cargo run -p kyodoku-bot` once PostgreSQL and Redis are available.
 

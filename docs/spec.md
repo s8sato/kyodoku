@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-**kyodoku** is a Discord bot designed to create and remove temporary voice channels for shared reading sessions, identified by ISBN. Each ISBN corresponds to one text thread that persists across sessions, allowing readers to continue discussions asynchronously.
+**kyodoku** is a Discord bot designed to create and remove temporary voice channels for shared reading sessions, identified by ISBN. Each ISBN corresponds to one text channel that persists across sessions, allowing readers to continue discussions asynchronously.
 
 The project follows a *spec-first* approach — this document serves as the source of truth for future automated implementation (e.g., via Codex).
 
@@ -19,7 +19,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ## 3. Slash Commands
 
-### `/isbn <code> [title_override]`
+### `/open <code> [title_override]`
 
 * **Purpose:** Create or reuse a voice channel associated with the given ISBN.
 * **Arguments:**
@@ -30,7 +30,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
   * Normalize ISBN (convert ISBN-10 → ISBN-13).
   * Fetch metadata (Open Library → Google Books → fallback to override).
-  * Create text thread if missing, voice channel if none exists.
+  * Create text channel if missing, voice channel if none exists.
   * Respond with links to both channels.
   * Voice channel auto-deletes after 2 minutes of zero members.
 
@@ -65,7 +65,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ### Voice Channel Creation
 
-1. User executes `/isbn <code>`.
+1. User executes `/open <code>`.
 2. Bot checks for existing channel → reuse or create.
 3. On creation, a new `voice_sessions` record is inserted.
 
@@ -81,7 +81,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 * When an ISBN’s voice channel reaches the configured participant threshold, the session is considered *active*.
   * Threshold defaults to **1** participant and can be overridden via the `READING_SESSION_ACTIVATION_THRESHOLD` environment variable.
 * Notify all users who have that ISBN on their watchlist via DM.
-  * DM message includes links to the ISBN text discussion thread (if present) and the active voice channel.
+  * DM message includes links to the ISBN text discussion channel (if present) and the active voice channel.
 
 ---
 
@@ -124,7 +124,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 | Phase | Deliverable                             | Commit Prefix      |
 | ----- | --------------------------------------- | ------------------ |
 | 0     | Minimal docs & spec skeleton            | `chore:` / `docs:` |
-| 1     | Core slash commands (`/isbn`, `/watch`) | `feat(bot):`       |
+| 1     | Core slash commands (`/open`, `/watch`) | `feat(bot):`       |
 | 2     | Auto-deletion & notifications           | `feat(session):`   |
 | 3     | Metadata resilience & caching           | `refactor(meta):`  |
 | 4     | Recording & summarization prototype     | `feat(summary):`   |

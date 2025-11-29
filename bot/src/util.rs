@@ -25,7 +25,7 @@ pub async fn ensure_isbn_thread(
         return Ok(thread);
     }
 
-    let channel_name = format!("isbn-{}", metadata.isbn_13);
+    let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let topic = format!("Discussion thread for {}", metadata.display_title());
     let channel = guild_id
         .create_channel(
@@ -59,7 +59,7 @@ pub async fn ensure_isbn_voice_channel(
         }
     }
 
-    let channel_name = format!("reading-{}", metadata.isbn_13);
+    let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let voice = guild_id
         .create_channel(
             &ctx.http,
