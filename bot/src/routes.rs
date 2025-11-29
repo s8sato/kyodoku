@@ -169,31 +169,64 @@ async fn handle_watch(
 
             let mut added = Vec::new();
             let mut seen = HashSet::new();
+            let mut errors = Vec::new();
 
             for code in codes {
-                let normalized = isbn::normalize(code)?;
+                let normalized = match isbn::normalize(code) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        errors.push(format!("{code}: {err}"));
+                        continue;
+                    }
+                };
+
                 if !seen.insert(normalized.isbn_13.clone()) {
                     continue;
                 }
 
-                let metadata = isbn::lookup_metadata(&state.http_client, &normalized, None).await?;
-                state.store.upsert_isbn(&metadata).await?;
-                state
+                let metadata =
+                    match isbn::lookup_metadata(&state.http_client, &normalized, None).await {
+                        Ok(value) => value,
+                        Err(err) => {
+                            errors.push(format!("{}: {err}", normalized.isbn_13));
+                            continue;
+                        }
+                    };
+
+                if let Err(err) = state.store.upsert_isbn(&metadata).await {
+                    errors.push(format!("{}: {err}", metadata.isbn_13));
+                    continue;
+                }
+
+                match state
                     .store
                     .add_watch(guild_id, user_id, &metadata.isbn_13)
-                    .await?;
+                    .await
+                {
+                    Ok(_) => added.push(format!(
+                        "**{}** ({})",
+                        metadata.display_title(),
+                        metadata.isbn_13
+                    )),
+                    Err(err) => errors.push(format!("{}: {err}", metadata.isbn_13)),
+                }
+            }
 
-                added.push(format!(
-                    "**{}** ({})",
-                    metadata.display_title(),
-                    metadata.isbn_13
+            let mut responses = Vec::new();
+            if !added.is_empty() {
+                responses.push(format!("Added {} to your watchlist", added.join(", ")));
+            }
+            if !errors.is_empty() {
+                responses.push(format!(
+                    "Some codes could not be processed: {}",
+                    errors.join("; ")
                 ));
             }
 
-            if added.is_empty() {
+            if responses.is_empty() {
                 Ok("No new ISBNs added to your watchlist.".to_string())
             } else {
-                Ok(format!("Added {} to your watchlist", added.join(", ")))
+                Ok(responses.join("\n"))
             }
         }
         "remove" => {
@@ -204,28 +237,49 @@ async fn handle_watch(
 
             let mut removed = Vec::new();
             let mut seen = HashSet::new();
+            let mut errors = Vec::new();
 
             for code in codes {
-                let normalized = isbn::normalize(code)?;
+                let normalized = match isbn::normalize(code) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        errors.push(format!("{code}: {err}"));
+                        continue;
+                    }
+                };
+
                 if !seen.insert(normalized.isbn_13.clone()) {
                     continue;
                 }
 
-                state
+                match state
                     .store
                     .remove_watch(guild_id, user_id, &normalized.isbn_13)
-                    .await?;
-
-                removed.push(normalized.isbn_13);
+                    .await
+                {
+                    Ok(_) => removed.push(normalized.isbn_13),
+                    Err(err) => errors.push(format!("{}: {err}", normalized.isbn_13)),
+                }
             }
 
-            if removed.is_empty() {
-                Ok("No ISBNs removed from your watchlist.".to_string())
-            } else {
-                Ok(format!(
+            let mut responses = Vec::new();
+            if !removed.is_empty() {
+                responses.push(format!(
                     "Removed {} from your watchlist",
                     removed.join(", ")
-                ))
+                ));
+            }
+            if !errors.is_empty() {
+                responses.push(format!(
+                    "Some codes could not be processed: {}",
+                    errors.join("; ")
+                ));
+            }
+
+            if responses.is_empty() {
+                Ok("No ISBNs removed from your watchlist.".to_string())
+            } else {
+                Ok(responses.join("\n"))
             }
         }
         "list" => {
