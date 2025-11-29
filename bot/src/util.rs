@@ -3,7 +3,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use redis::AsyncCommands;
-use serenity::all::{ChannelId, ChannelType, Context, CreateChannel, CreateMessage, GuildId};
+use serenity::all::{
+    ChannelId, ChannelType, Context, CreateChannel, CreateMessage, GuildId, UserId,
+};
 use tokio::time::sleep;
 use tracing::{error, info, warn};
 
@@ -213,28 +215,43 @@ async fn notify_watchers(
         })
         .unwrap_or_else(|| format!("Session {}", isbn));
 
-    let mut target_channel = state.store.get_notification_channel(guild_id).await?;
-    if target_channel.is_none() {
-        target_channel = state.store.get_thread_id(guild_id, &isbn).await?;
+    let thread_channel = state.store.get_thread_id(guild_id, &isbn).await?;
+    let content = format_dm_content(&title, thread_channel, channel_id);
+
+    for watcher in watchers {
+        if let Err(err) = send_dm(&ctx.http, watcher, &content).await {
+            warn!(
+                "failed to send DM for reading session {} to {}: {err:?}",
+                isbn, watcher
+            );
+        }
     }
 
-    let Some(channel_id_target) = target_channel else {
-        return Ok(());
-    };
+    Ok(())
+}
 
-    let mentions = watchers
-        .iter()
-        .map(|id| format!("<@{}>", id))
-        .collect::<Vec<_>>()
-        .join(" ");
+fn format_dm_content(
+    title: &str,
+    text_channel: Option<ChannelId>,
+    voice_channel: ChannelId,
+) -> String {
+    let mut content = format!("Reading session for **{}** is now active!\n", title);
 
-    let content = format!(
-        "Reading session for **{}** is now active in <#{}>! {}",
-        title, channel_id, mentions
-    );
+    if let Some(text_channel) = text_channel {
+        content.push_str(&format!("Text channel: <#{}>\n", text_channel.get()));
+    }
 
-    channel_id_target
-        .send_message(&ctx.http, CreateMessage::new().content(content))
+    content.push_str(&format!("Voice channel: <#{}>", voice_channel.get()));
+
+    content
+}
+
+async fn send_dm(http: &serenity::http::Http, user_id: UserId, content: &str) -> Result<()> {
+    let channel = user_id.create_dm_channel(http).await?;
+
+    channel
+        .id
+        .send_message(http, CreateMessage::new().content(content))
         .await?;
 
     Ok(())
