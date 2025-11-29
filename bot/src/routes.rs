@@ -125,7 +125,7 @@ async fn handle_isbn(
     state.store.upsert_isbn(&metadata).await?;
 
     let thread_id = util::ensure_isbn_thread(ctx, guild_id, &metadata, &state.store).await?;
-    let voice_id = util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, &state.store).await?;
+    let voice_id = util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
 
     Ok(format!(
         "**{}**\nText thread: <#{}>\nVoice channel: <#{}>",

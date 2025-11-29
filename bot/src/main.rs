@@ -27,6 +27,7 @@ pub struct Config {
     pub database_url: String,
     pub redis_url: String,
     pub reading_session_activation_threshold: usize,
+    pub voice_cleanup_delay_seconds: u64,
 }
 
 impl Config {
@@ -41,6 +42,11 @@ impl Config {
                 .and_then(|value| value.parse().ok())
                 .filter(|value| *value > 0)
                 .unwrap_or(1);
+        let voice_cleanup_delay_seconds = std::env::var("VOICE_CLEANUP_DELAY_SECONDS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(60);
 
         Ok(Self {
             discord_token,
@@ -48,6 +54,7 @@ impl Config {
             database_url,
             redis_url,
             reading_session_activation_threshold,
+            voice_cleanup_delay_seconds,
         })
     }
 }
