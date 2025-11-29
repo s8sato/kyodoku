@@ -158,7 +158,10 @@ async fn maybe_notify_activation(
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<()> {
-    if current_voice_members(&ctx, guild_id, channel_id) < 2 {
+    let member_count = current_voice_members(&ctx, guild_id, channel_id);
+    let threshold = state.config.reading_session_activation_threshold;
+
+    if member_count < threshold {
         return Ok(());
     }
 
