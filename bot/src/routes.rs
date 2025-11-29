@@ -137,8 +137,8 @@ async fn handle_open(
     let voice_id = util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
 
     Ok(format!(
-        "Opened a reading session for **{}**.\nText channel: <#{}>\nVoice channel: <#{}>",
-        metadata.display_title(),
+        "Opened a reading session for {}.\nText channel: <#{}>\nVoice channel: <#{}>",
+        format_entry(&metadata.title, metadata.subtitle.as_deref(), &metadata.isbn_13),
         thread_id,
         voice_id
     ))
@@ -183,7 +183,7 @@ async fn handle_watch(
                     .add_watch(guild_id, user_id, &metadata.isbn_13)
                     .await?;
 
-                added.push(format_watch_entry(
+                added.push(format_entry(
                     &metadata.title,
                     metadata.subtitle.as_deref(),
                     &metadata.isbn_13,
@@ -212,12 +212,12 @@ async fn handle_watch(
                 }
 
                 let entry = match state.store.fetch_isbn(&normalized.isbn_13).await? {
-                    Some(record) => format_watch_entry(
+                    Some(record) => format_entry(
                         &record.title,
                         record.subtitle.as_deref(),
                         &record.isbn_13,
                     ),
-                    None => format_watch_entry(&normalized.isbn_13, None, &normalized.isbn_13),
+                    None => format_entry(&normalized.isbn_13, None, &normalized.isbn_13),
                 };
 
                 state
@@ -245,12 +245,12 @@ async fn handle_watch(
                 let mut entries = Vec::new();
                 for isbn_13 in watches {
                     let entry = match state.store.fetch_isbn(&isbn_13).await? {
-                        Some(record) => format_watch_entry(
+                        Some(record) => format_entry(
                             &record.title,
                             record.subtitle.as_deref(),
                             &record.isbn_13,
                         ),
-                        None => format_watch_entry(&isbn_13, None, &isbn_13),
+                        None => format_entry(&isbn_13, None, &isbn_13),
                     };
                     entries.push(entry);
                 }
@@ -299,6 +299,6 @@ fn display_title(title: &str, subtitle: Option<&str>) -> String {
     }
 }
 
-fn format_watch_entry(title: &str, subtitle: Option<&str>, isbn_13: &str) -> String {
+fn format_entry(title: &str, subtitle: Option<&str>, isbn_13: &str) -> String {
     format!("**{}** ({})", display_title(title, subtitle), isbn_13)
 }
