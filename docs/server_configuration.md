@@ -9,15 +9,6 @@ Display channels in the following order to keep navigation consistent:
 2. **Per-ISBN voice channels** — volatile spaces for real-time collaboration.
 3. **Per-ISBN text channels** — persistent discussion and handoff space tied to each book.
 
-## Naming conventions
-Use clear and consistent channel names so members can identify the right book at a glance:
-
-- Landing page: `#kyodoku-landing` (read-only, only slash commands allowed).
-- Voice channels: `🔊 isbn-<ISBN>-voice` (e.g., `🔊 isbn-9784101010014-voice`).
-- Text channels: `#isbn-<ISBN>-text` (e.g., `#isbn-9784101010014-text`).
-
-Keep the voice and text channel names aligned to avoid confusion when toggling between modalities for the same ISBN.
-
 ## Example landing page content
 Use the landing page to orient newcomers. A concise template is shown below:
 
