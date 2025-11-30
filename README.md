@@ -22,7 +22,7 @@ requirements.
    docker compose -f infra/docker/docker-compose.yml up --build
    ```
 
-3. Invite the Discord application to your guild and interact using the `/open` and `/watch` commands.
+3. Invite the Discord application to your guild with `Send Messages`, `Manage Messages`, and `Manage Channels` bot permissions so it can tidy the command intake channel and create the per-ISBN channels used by `/open`, then interact using the `/open` and `/watch` commands.
 
 The bot crate can also be run locally with `cargo run -p kyodoku-bot` once PostgreSQL and Redis are available.
 
