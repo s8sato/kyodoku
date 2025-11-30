@@ -27,7 +27,7 @@ impl Store {
 
     pub async fn upsert_isbn(&self, metadata: &IsbnMetadata) -> Result<()> {
         sqlx::query(
-            "INSERT INTO isbn (isbn_13, isbn_10, title, subtitle, authors, source, updated_at)
+            "INSERT INTO books (isbn_13, isbn_10, title, subtitle, authors, source, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, NOW())
              ON CONFLICT (isbn_13) DO UPDATE SET
                  isbn_10 = EXCLUDED.isbn_10,
@@ -51,7 +51,7 @@ impl Store {
 
     pub async fn fetch_isbn(&self, isbn_13: &str) -> Result<Option<DbIsbn>> {
         let record = sqlx::query_as::<_, DbIsbn>(
-            "SELECT isbn_13, isbn_10, title, subtitle, authors, source FROM isbn WHERE isbn_13 = $1",
+            "SELECT isbn_13, isbn_10, title, subtitle, authors, source FROM books WHERE isbn_13 = $1",
         )
         .bind(isbn_13)
         .fetch_optional(self.pool())
@@ -60,13 +60,13 @@ impl Store {
         Ok(record)
     }
 
-    pub async fn get_thread_id(
+    pub async fn get_text_channel_id(
         &self,
         guild_id: GuildId,
         isbn_13: &str,
     ) -> Result<Option<ChannelId>> {
         let record: Option<(i64,)> = sqlx::query_as(
-            "SELECT thread_id FROM isbn_threads WHERE guild_id = $1 AND isbn_13 = $2",
+            "SELECT channel_id FROM text_channels WHERE guild_id = $1 AND isbn_13 = $2",
         )
         .bind(guild_id.get() as i64)
         .bind(isbn_13)
@@ -76,22 +76,22 @@ impl Store {
         Ok(record.map(|(id,)| ChannelId::new(id as u64)))
     }
 
-    pub async fn set_thread_id(
+    pub async fn set_text_channel_id(
         &self,
         guild_id: GuildId,
         isbn_13: &str,
-        thread_id: ChannelId,
+        channel_id: ChannelId,
     ) -> Result<()> {
         sqlx::query(
-            "INSERT INTO isbn_threads (guild_id, isbn_13, thread_id, updated_at)
+            "INSERT INTO text_channels (guild_id, isbn_13, channel_id, updated_at)
              VALUES ($1, $2, $3, NOW())
              ON CONFLICT (guild_id, isbn_13) DO UPDATE SET
-                 thread_id = EXCLUDED.thread_id,
+                 channel_id = EXCLUDED.channel_id,
                  updated_at = NOW()",
         )
         .bind(guild_id.get() as i64)
         .bind(isbn_13)
-        .bind(thread_id.get() as i64)
+        .bind(channel_id.get() as i64)
         .execute(self.pool())
         .await?;
 
@@ -104,7 +104,7 @@ impl Store {
         isbn_13: &str,
     ) -> Result<Option<ChannelId>> {
         let record: Option<(i64,)> = sqlx::query_as(
-            "SELECT channel_id FROM voice_sessions WHERE guild_id = $1 AND isbn_13 = $2 AND ended_at IS NULL",
+            "SELECT channel_id FROM voice_channels WHERE guild_id = $1 AND isbn_13 = $2 AND ended_at IS NULL",
         )
         .bind(guild_id.get() as i64)
         .bind(isbn_13)
@@ -121,7 +121,7 @@ impl Store {
         isbn_13: &str,
     ) -> Result<()> {
         sqlx::query(
-            "INSERT INTO voice_sessions (guild_id, channel_id, isbn_13, started_at, ended_at)
+            "INSERT INTO voice_channels (guild_id, channel_id, isbn_13, started_at, ended_at)
              VALUES ($1, $2, $3, NOW(), NULL)
              ON CONFLICT (channel_id) DO UPDATE SET
                  guild_id = EXCLUDED.guild_id,
@@ -140,7 +140,7 @@ impl Store {
 
     pub async fn end_voice_session(&self, channel_id: ChannelId) -> Result<()> {
         sqlx::query(
-            "UPDATE voice_sessions SET ended_at = NOW() WHERE channel_id = $1 AND ended_at IS NULL",
+            "UPDATE voice_channels SET ended_at = NOW() WHERE channel_id = $1 AND ended_at IS NULL",
         )
         .bind(channel_id.get() as i64)
         .execute(self.pool())
@@ -149,9 +149,9 @@ impl Store {
         Ok(())
     }
 
-    pub async fn get_isbn_for_channel(&self, channel_id: ChannelId) -> Result<Option<String>> {
+    pub async fn get_isbn_for_voice_channel(&self, channel_id: ChannelId) -> Result<Option<String>> {
         let record: Option<(String,)> = sqlx::query_as(
-            "SELECT isbn_13 FROM voice_sessions WHERE channel_id = $1 AND ended_at IS NULL",
+            "SELECT isbn_13 FROM voice_channels WHERE channel_id = $1 AND ended_at IS NULL",
         )
         .bind(channel_id.get() as i64)
         .fetch_optional(self.pool())
@@ -220,7 +220,7 @@ impl Store {
 
     pub async fn get_notification_channel(&self, guild_id: GuildId) -> Result<Option<ChannelId>> {
         let record: Option<(i64,)> = sqlx::query_as(
-            "SELECT notification_channel_id FROM guild_settings WHERE guild_id = $1",
+            "SELECT notification_channel_id FROM guilds WHERE guild_id = $1",
         )
         .bind(guild_id.get() as i64)
         .fetch_optional(self.pool())

@@ -20,7 +20,7 @@ This guide walks through preparing credentials, configuring the bot container, a
    - `ALLOWED_GUILD_IDS=` — a comma-separated list of Discord server IDs where the bot is allowed to stay. The bot will immediately leave any guild not listed here. If you leave this empty, the bot will exit every guild, including ones you invite it to.
      - To copy a server ID, enable **Developer Mode** in Discord user settings → **Advanced**, then right-click the server name in the sidebar and choose **Copy Server ID**.
    - `COMMAND_INPUT_CHANNEL_ID=` — optional. When set, the bot deletes any non-command messages from non-admin users in this channel to keep the command intake space clean.
-   - `TEXT_CHANNEL_CATEGORY_ID=` — optional. When set, new ISBN text threads are created inside this category.
+   - `TEXT_CHANNEL_CATEGORY_ID=` — optional. When set, new ISBN text channels are created inside this category.
    - `VOICE_CHANNEL_CATEGORY_ID=` — optional. When set, ISBN voice channels are created inside this category.
    - Leave the PostgreSQL and Redis connection strings as their defaults unless you are running external services.
 4. Save the file. The bot container will read these values on startup.

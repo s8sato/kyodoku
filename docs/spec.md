@@ -49,11 +49,11 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 | Table            | Description                                                     |
 | ---------------- | --------------------------------------------------------------- |
-| `isbn`           | Stores ISBN metadata (title, subtitle, authors, source)         |
-| `guild_settings` | Per-server configuration (voice category, notification channel) |
-| `isbn_threads`   | Mapping of guild × ISBN to text channel ID                      |
+| `books`           | Stores ISBN metadata (title, subtitle, authors, source)         |
+| `guilds` | Per-server configuration (notification channel) |
+| `text_channels`   | Mapping of guild × ISBN to text channel ID                      |
 | `watchlist`      | User and guild watch subscriptions                              |
-| `voice_sessions` | Records of each active ISBN voice session                       |
+| `voice_channels` | Records of each active ISBN voice session                       |
 
 ---
 
@@ -63,7 +63,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 1. User executes `/open <code>`.
 2. Bot checks for existing channel → reuse or create.
-3. On creation, a new `voice_sessions` record is inserted.
+3. On creation, a new `voice_channels` record is inserted.
 
 ### Channel Placement
 
@@ -75,7 +75,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 1. Monitor `VoiceStateUpdate` events.
 2. Start a grace timer (defaults to **1 minute** via `VOICE_CLEANUP_DELAY_SECONDS`) when a channel is first created and any time the member count returns to 0.
 3. If still empty, delete the channel.
-4. Log `ended_at` timestamp in `voice_sessions`.
+4. Log `ended_at` timestamp in `voice_channels`.
 
 ### Notifications
 

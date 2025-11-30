@@ -15,7 +15,7 @@ use crate::BotState;
 const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
 const ACTIVATION_TTL_SECONDS: i64 = 600;
 
-pub async fn ensure_isbn_thread(
+pub async fn ensure_isbn_text_channel(
     ctx: &Context,
     guild_id: GuildId,
     metadata: &IsbnMetadata,
@@ -23,14 +23,14 @@ pub async fn ensure_isbn_thread(
 ) -> Result<ChannelId> {
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let desired_name = truncate_name(&channel_name);
-    let desired_topic = format!("Discussion thread for {}", metadata.display_title());
+    let desired_topic = format!("Discussion channel for {}", metadata.display_title());
 
-    if let Some(thread) = state
+    if let Some(channel_id) = state
         .store
-        .get_thread_id(guild_id, &metadata.isbn_13)
+        .get_text_channel_id(guild_id, &metadata.isbn_13)
         .await?
     {
-        if let Ok(channel) = ctx.http.get_channel(thread).await {
+        if let Ok(channel) = ctx.http.get_channel(channel_id).await {
             if let Some(guild_channel) = channel.guild() {
                 let mut edits = EditChannel::new();
                 let mut needs_update = false;
@@ -49,7 +49,7 @@ pub async fn ensure_isbn_thread(
                     guild_channel.id.edit(&ctx.http, edits).await?;
                 }
 
-                return Ok(thread);
+                return Ok(guild_channel.id);
             }
         }
     }
@@ -72,7 +72,7 @@ pub async fn ensure_isbn_thread(
 
     state
         .store
-        .set_thread_id(guild_id, &metadata.isbn_13, channel.id)
+        .set_text_channel_id(guild_id, &metadata.isbn_13, channel.id)
         .await?;
 
     Ok(channel.id)
@@ -256,9 +256,9 @@ async fn notify_watchers(
     ctx: &Context,
     state: &BotState,
     guild_id: GuildId,
-    channel_id: ChannelId,
+    voice_ch_id: ChannelId,
 ) -> Result<()> {
-    let Some(isbn) = state.store.get_isbn_for_channel(channel_id).await? else {
+    let Some(isbn) = state.store.get_isbn_for_voice_channel(voice_ch_id).await? else {
         return Ok(());
     };
 
@@ -276,8 +276,8 @@ async fn notify_watchers(
         })
         .unwrap_or_else(|| format!("Session {}", isbn));
 
-    let thread_channel = state.store.get_thread_id(guild_id, &isbn).await?;
-    let content = format_dm_content(&title, thread_channel, channel_id);
+    let text_ch_id = state.store.get_text_channel_id(guild_id, &isbn).await?;
+    let content = format_dm_content(&title, text_ch_id, voice_ch_id);
 
     for watcher in watchers {
         if let Err(err) = send_dm(&ctx.http, watcher, &content).await {

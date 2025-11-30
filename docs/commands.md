@@ -15,6 +15,6 @@
 
 - **Description:** Manage ISBN watchlist.
 - **Actions:**
-- `add`: Add ISBN to user watchlist.
-- `remove`: Remove ISBN from watchlist.
 - `list`: Show current watchlist.
+- `add`: Add ISBNs to user watchlist.
+- `remove`: Remove ISBNs from watchlist.

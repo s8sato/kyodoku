@@ -133,8 +133,8 @@ async fn handle_open(
 
     state.store.upsert_isbn(&metadata).await?;
 
-    let thread_id = util::ensure_isbn_thread(ctx, guild_id, &metadata, state.clone()).await?;
-    let voice_id = util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
+    let text_ch_id = util::ensure_isbn_text_channel(ctx, guild_id, &metadata, state.clone()).await?;
+    let voice_ch_id = util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
 
     Ok(format!(
         "Opened a reading session for {}.\nText channel: <#{}>\nVoice channel: <#{}>",
@@ -143,8 +143,8 @@ async fn handle_open(
             metadata.subtitle.as_deref(),
             &metadata.isbn_13
         ),
-        thread_id,
-        voice_id
+        text_ch_id,
+        voice_ch_id
     ))
 }
 
