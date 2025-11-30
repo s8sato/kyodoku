@@ -11,7 +11,8 @@ use async_trait::async_trait;
 use dotenvy::dotenv;
 use redis::Client as RedisClient;
 use serenity::all::{
-    ApplicationId, Client, Context, GatewayIntents, GuildId, Interaction, Ready, VoiceState,
+    ApplicationId, ChannelId, Client, Context, GatewayIntents, GuildId, Interaction, Ready,
+    VoiceState,
 };
 use serenity::prelude::TypeMapKey;
 use songbird::SerenityInit;
@@ -29,6 +30,8 @@ pub struct Config {
     pub redis_url: String,
     pub reading_session_activation_threshold: usize,
     pub voice_cleanup_delay_seconds: u64,
+    pub text_channel_category_id: Option<ChannelId>,
+    pub voice_channel_category_id: Option<ChannelId>,
     pub allowed_guilds: HashSet<GuildId>,
 }
 
@@ -49,6 +52,10 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(60);
+        let text_channel_category_id =
+            Self::channel_id_from_env("TEXT_CHANNEL_CATEGORY_ID", "text")?;
+        let voice_channel_category_id =
+            Self::channel_id_from_env("VOICE_CHANNEL_CATEGORY_ID", "voice")?;
         let allowed_guilds = std::env::var("ALLOWED_GUILD_IDS")
             .unwrap_or_default()
             .split(|ch: char| ch == ',' || ch.is_whitespace())
@@ -74,8 +81,26 @@ impl Config {
             redis_url,
             reading_session_activation_threshold,
             voice_cleanup_delay_seconds,
+            text_channel_category_id,
+            voice_channel_category_id,
             allowed_guilds,
         })
+    }
+
+    fn channel_id_from_env(name: &str, label: &str) -> Result<Option<ChannelId>> {
+        let raw = match std::env::var(name) {
+            Ok(value) if !value.trim().is_empty() => value,
+            Ok(_) | Err(std::env::VarError::NotPresent) => return Ok(None),
+            Err(err) => return Err(err.into()),
+        };
+
+        match raw.parse::<u64>() {
+            Ok(id) => Ok(Some(ChannelId::new(id))),
+            Err(err) => {
+                warn!("Ignoring invalid {label} category id '{raw}': {err:?}");
+                Ok(None)
+            }
+        }
     }
 
     pub fn is_guild_allowed(&self, guild_id: GuildId) -> bool {
