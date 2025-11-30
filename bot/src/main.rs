@@ -218,11 +218,29 @@ impl serenity::prelude::EventHandler for Handler {
             return;
         }
 
-        let is_admin = message
-            .member
-            .as_ref()
-            .and_then(|member| member.permissions)
-            .map_or(false, |permissions| permissions.administrator());
+        let is_admin = if let Some(guild_id) = message.guild_id {
+            match guild_id.member(&ctx.http, message.author.id).await {
+                Ok(member) => match member.permissions(&ctx.cache) {
+                    Ok(permissions) => permissions.administrator(),
+                    Err(err) => {
+                        warn!(
+                            "failed to compute permissions for member {}: {err:?}",
+                            message.author.id
+                        );
+                        false
+                    }
+                },
+                Err(err) => {
+                    warn!(
+                        "failed to fetch member {} from guild {guild_id}: {err:?}",
+                        message.author.id
+                    );
+                    false
+                }
+            }
+        } else {
+            false
+        };
 
         if is_admin {
             return;
