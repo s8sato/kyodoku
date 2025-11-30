@@ -62,6 +62,14 @@ pub async fn ensure_isbn_thread(
     }
     let channel = guild_id.create_channel(&ctx.http, channel).await?;
 
+    channel
+        .id
+        .send_message(
+            &ctx.http,
+            CreateMessage::new().content(format_metadata_post(metadata)),
+        )
+        .await?;
+
     state
         .store
         .set_thread_id(guild_id, &metadata.isbn_13, channel.id)
@@ -295,6 +303,25 @@ fn format_dm_content(
     }
 
     content.push_str(&format!("Voice channel: <#{}>", voice_channel.get()));
+
+    content
+}
+
+fn format_metadata_post(metadata: &IsbnMetadata) -> String {
+    let mut content = format!("**{}**\n", metadata.display_title());
+
+    if !metadata.authors.is_empty() {
+        content.push_str(&format!("{}\n", metadata.authors.join(", ")));
+    }
+
+    content.push_str(&format!("ISBN-13: `{}`\n", metadata.isbn_13));
+
+    let amazon_link = if let Some(isbn_10) = &metadata.isbn_10 {
+        format!("https://www.amazon.co.jp/dp/{}", isbn_10)
+    } else {
+        format!("https://www.amazon.co.jp/s?k={}", metadata.isbn_13)
+    };
+    content.push_str(&format!("{amazon_link}"));
 
     content
 }
