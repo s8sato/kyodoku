@@ -15,7 +15,7 @@ requirements.
 
 ## Getting Started
 
-1. Copy [`bot/.env.example`](bot/.env.example) to `bot/.env` and fill in your Discord credentials.
+1. Copy [`bot/.env.example`](bot/.env.example) to `bot/.env` and fill in your Discord credentials. Set `ALLOWED_GUILD_IDS` to a comma-separated list of server IDs where the bot is permitted to stay (leave it empty to force the bot to exit every guild).
 2. Start the development stack:
 
    ```bash
