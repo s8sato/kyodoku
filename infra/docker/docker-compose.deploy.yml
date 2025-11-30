@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  bot:
+    image: ${KYODOKU_IMAGE:?Set KYODOKU_IMAGE to the OCI image tag (e.g., iad.ocir.io/tenancy/kyodoku-bot:latest)}
+    restart: unless-stopped
+    env_file:
+      - ./bot.env
+    environment:
+      RUST_LOG: info
+    depends_on: []
