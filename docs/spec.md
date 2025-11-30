@@ -97,7 +97,13 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ---
 
-## 8. Non-Goals
+## 8. Safety & Allowlisting
+
+To prevent unauthorized resource consumption, deployments can pin the bot to a strict allowlist of guild IDs via the `ALLOWED_GUILD_IDS` environment variable (comma-separated). When set, the bot immediately leaves any guild whose ID is not included, both on startup and whenever it is newly added.
+
+---
+
+## 9. Non-Goals
 
 * No persistent global state beyond ISBN metadata and text logs.
 * No audio storage or moderation beyond Discord’s native tools.
@@ -105,7 +111,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ---
 
-## 9. Implementation Stack (Planned)
+## 10. Implementation Stack (Planned)
 
 * Language: Rust 1.76+
 * Framework: Serenity + Songbird
@@ -115,7 +121,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ---
 
-## 10. Milestones
+## 11. Milestones
 
 | Phase | Deliverable                             | Commit Prefix      |
 | ----- | --------------------------------------- | ------------------ |
@@ -127,6 +133,6 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ---
 
-## 11. License
+## 12. License
 
 MIT — see `LICENSE` for details.

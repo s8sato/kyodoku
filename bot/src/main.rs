@@ -3,6 +3,7 @@ mod routes;
 mod store;
 mod util;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -10,7 +11,7 @@ use async_trait::async_trait;
 use dotenvy::dotenv;
 use redis::Client as RedisClient;
 use serenity::all::{
-    ApplicationId, Client, Context, GatewayIntents, Interaction, Ready, VoiceState,
+    ApplicationId, Client, Context, GatewayIntents, Guild, GuildId, Interaction, Ready, VoiceState,
 };
 use serenity::prelude::TypeMapKey;
 use songbird::SerenityInit;
@@ -28,6 +29,7 @@ pub struct Config {
     pub redis_url: String,
     pub reading_session_activation_threshold: usize,
     pub voice_cleanup_delay_seconds: u64,
+    pub allowed_guild_ids: Option<HashSet<GuildId>>,
 }
 
 impl Config {
@@ -47,6 +49,22 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(60);
+        let allowed_guild_ids = std::env::var("ALLOWED_GUILD_IDS")
+            .ok()
+            .map(|value| {
+                value
+                    .split(',')
+                    .filter_map(|item| {
+                        let trimmed = item.trim();
+                        if trimmed.is_empty() {
+                            None
+                        } else {
+                            trimmed.parse::<u64>().ok().map(GuildId::new)
+                        }
+                    })
+                    .collect::<HashSet<_>>()
+            })
+            .filter(|ids| !ids.is_empty());
 
         Ok(Self {
             discord_token,
@@ -55,6 +73,7 @@ impl Config {
             redis_url,
             reading_session_activation_threshold,
             voice_cleanup_delay_seconds,
+            allowed_guild_ids,
         })
     }
 }
@@ -75,13 +94,53 @@ impl TypeMapKey for StateKey {
 
 struct Handler;
 
+impl Handler {
+    async fn get_state(ctx: &Context) -> Option<Arc<BotState>> {
+        let data = ctx.data.read().await;
+        data.get::<StateKey>().cloned()
+    }
+
+    async fn leave_if_disallowed(ctx: &Context, state: Arc<BotState>, guild_id: GuildId) {
+        let Some(allowed) = &state.config.allowed_guild_ids else {
+            return;
+        };
+
+        if allowed.contains(&guild_id) {
+            return;
+        }
+
+        info!(guild_id = guild_id.get(), "Leaving unauthorized guild");
+        if let Err(err) = guild_id.leave(&ctx.http).await {
+            error!(
+                guild_id = guild_id.get(),
+                "failed to leave unauthorized guild: {err:?}"
+            );
+        }
+    }
+}
+
 #[async_trait]
 impl serenity::prelude::EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("Logged in as {}", ready.user.name);
+        if let Some(state) = Self::get_state(&ctx).await {
+            for guild_status in &ready.guilds {
+                let guild_id = guild_status.id;
+                Self::leave_if_disallowed(&ctx, state.clone(), guild_id).await;
+            }
+        }
         if let Err(err) = routes::register_commands(&ctx.http).await {
             error!("failed to register commands: {err:?}");
         }
+    }
+
+    async fn guild_create(&self, ctx: Context, guild: Guild, _is_new: Option<bool>) {
+        let Some(state) = Self::get_state(&ctx).await else {
+            error!("Bot state missing from context");
+            return;
+        };
+
+        Self::leave_if_disallowed(&ctx, state, guild.id).await;
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -89,10 +148,7 @@ impl serenity::prelude::EventHandler for Handler {
             return;
         };
 
-        let state = {
-            let data = ctx.data.read().await;
-            data.get::<StateKey>().cloned()
-        };
+        let state = Self::get_state(&ctx).await;
 
         let Some(state) = state else {
             error!("Bot state missing from context");
@@ -105,10 +161,7 @@ impl serenity::prelude::EventHandler for Handler {
     }
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
-        let state = {
-            let data = ctx.data.read().await;
-            data.get::<StateKey>().cloned()
-        };
+        let state = Self::get_state(&ctx).await;
 
         let Some(state) = state else {
             error!("Bot state missing from context");
