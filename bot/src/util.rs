@@ -76,18 +76,41 @@ pub async fn ensure_isbn_voice_channel(
     metadata: &IsbnMetadata,
     state: Arc<BotState>,
 ) -> Result<ChannelId> {
+    let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
+    let desired_name = truncate_name(&channel_name);
+
     if let Some(channel) = state
         .store
         .get_active_voice_channel(guild_id, &metadata.isbn_13)
         .await?
     {
-        if ctx.http.get_channel(channel).await.is_ok() {
-            return Ok(channel);
+        if let Ok(channel) = ctx.http.get_channel(channel).await {
+            if let Some(guild_channel) = channel.guild() {
+                let mut edits = EditChannel::new();
+                let mut needs_update = false;
+
+                if guild_channel.name != desired_name {
+                    edits = edits.name(desired_name.clone());
+                    needs_update = true;
+                }
+
+                if let Some(category_id) = state.config.voice_channel_category_id {
+                    if guild_channel.parent_id != Some(category_id) {
+                        edits = edits.category(category_id);
+                        needs_update = true;
+                    }
+                }
+
+                if needs_update {
+                    guild_channel.id.edit(&ctx.http, edits).await?;
+                }
+
+                return Ok(channel);
+            }
         }
     }
 
-    let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
-    let mut voice = CreateChannel::new(truncate_name(&channel_name)).kind(ChannelType::Voice);
+    let mut voice = CreateChannel::new(desired_name).kind(ChannelType::Voice);
     if let Some(category_id) = state.config.voice_channel_category_id {
         voice = voice.category(category_id);
     }
