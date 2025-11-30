@@ -19,24 +19,28 @@ pub async fn ensure_isbn_thread(
     ctx: &Context,
     guild_id: GuildId,
     metadata: &IsbnMetadata,
-    store: &crate::store::Store,
+    state: Arc<BotState>,
 ) -> Result<ChannelId> {
-    if let Some(thread) = store.get_thread_id(guild_id, &metadata.isbn_13).await? {
+    if let Some(thread) = state
+        .store
+        .get_thread_id(guild_id, &metadata.isbn_13)
+        .await?
+    {
         return Ok(thread);
     }
 
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let topic = format!("Discussion thread for {}", metadata.display_title());
-    let channel = guild_id
-        .create_channel(
-            &ctx.http,
-            CreateChannel::new(truncate_name(&channel_name))
-                .kind(ChannelType::Text)
-                .topic(topic),
-        )
-        .await?;
+    let mut channel = CreateChannel::new(truncate_name(&channel_name))
+        .kind(ChannelType::Text)
+        .topic(topic);
+    if let Some(category_id) = state.config.text_channel_category_id {
+        channel = channel.category(category_id);
+    }
+    let channel = guild_id.create_channel(&ctx.http, channel).await?;
 
-    store
+    state
+        .store
         .set_thread_id(guild_id, &metadata.isbn_13, channel.id)
         .await?;
 
@@ -60,12 +64,11 @@ pub async fn ensure_isbn_voice_channel(
     }
 
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
-    let voice = guild_id
-        .create_channel(
-            &ctx.http,
-            CreateChannel::new(truncate_name(&channel_name)).kind(ChannelType::Voice),
-        )
-        .await?;
+    let mut voice = CreateChannel::new(truncate_name(&channel_name)).kind(ChannelType::Voice);
+    if let Some(category_id) = state.config.voice_channel_category_id {
+        voice = voice.category(category_id);
+    }
+    let voice = guild_id.create_channel(&ctx.http, voice).await?;
 
     state
         .store

@@ -17,11 +17,10 @@ This guide walks through preparing credentials, configuring the bot container, a
 3. Fill in the required variables:
    - `DISCORD_TOKEN=` — paste the bot token from step 1.
    - `APPLICATION_ID=` — paste the application ID from step 1.
-   - `ALLOWED_GUILD_IDS=` — a comma-separated list of Discord server IDs where the bot is allowed to stay. The bot will immedi
-ately leave any guild not listed here. If you leave this empty, the bot will exit every guild, including ones you invite it to
-.
-     - To copy a server ID, enable **Developer Mode** in Discord user settings → **Advanced**, then right-click the server name
- in the sidebar and choose **Copy Server ID**.
+   - `ALLOWED_GUILD_IDS=` — a comma-separated list of Discord server IDs where the bot is allowed to stay. The bot will immediately leave any guild not listed here. If you leave this empty, the bot will exit every guild, including ones you invite it to.
+     - To copy a server ID, enable **Developer Mode** in Discord user settings → **Advanced**, then right-click the server name in the sidebar and choose **Copy Server ID**.
+   - `TEXT_CHANNEL_CATEGORY_ID=` — optional. When set, new ISBN text threads are created inside this category.
+   - `VOICE_CHANNEL_CATEGORY_ID=` — optional. When set, ISBN voice channels are created inside this category.
    - Leave the PostgreSQL and Redis connection strings as their defaults unless you are running external services.
 4. Save the file. The bot container will read these values on startup.
 

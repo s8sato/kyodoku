@@ -65,6 +65,11 @@ The project follows a *spec-first* approach — this document serves as the sour
 2. Bot checks for existing channel → reuse or create.
 3. On creation, a new `voice_sessions` record is inserted.
 
+### Channel Placement
+
+* ISBN text channels belong to the category provided via the `TEXT_CHANNEL_CATEGORY_ID` environment variable when set; otherwise they are created at the guild root.
+* ISBN voice channels belong to the category provided via the `VOICE_CHANNEL_CATEGORY_ID` environment variable when set; otherwise they are created at the guild root.
+
 ### Session Deletion
 
 1. Monitor `VoiceStateUpdate` events.
