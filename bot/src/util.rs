@@ -21,6 +21,7 @@ pub async fn ensure_isbn_thread(
     metadata: &IsbnMetadata,
     state: Arc<BotState>,
 ) -> Result<ChannelId> {
+    error!("TC meta: {metadata:?}");
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let desired_name = truncate_name(&channel_name);
     let desired_topic = format!("Discussion thread for {}", metadata.display_title());
@@ -61,6 +62,7 @@ pub async fn ensure_isbn_thread(
         channel = channel.category(category_id);
     }
     let channel = guild_id.create_channel(&ctx.http, channel).await?;
+    error!("TC name: {:?}", channel.name);
 
     channel
         .id
@@ -84,6 +86,7 @@ pub async fn ensure_isbn_voice_channel(
     metadata: &IsbnMetadata,
     state: Arc<BotState>,
 ) -> Result<ChannelId> {
+    error!("VC meta: {metadata:?}");
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let desired_name = truncate_name(&channel_name);
 
@@ -123,6 +126,7 @@ pub async fn ensure_isbn_voice_channel(
         voice = voice.category(category_id);
     }
     let voice = guild_id.create_channel(&ctx.http, voice).await?;
+    error!("VC name: {:?}", voice.name);
 
     state
         .store
