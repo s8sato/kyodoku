@@ -17,8 +17,8 @@ AMD64 shapes.
    - Create `/opt/kyodoku` on the VM and copy `infra/docker/docker-compose.deploy.yml` there.
    - Add a `bot.env` file alongside it, derived from [`bot/.env.example`](../bot/.env.example). This file is not committed to
      the repository and must contain production values for PostgreSQL/Redis connections and Discord credentials.
-   - Keep any stateful backing services (PostgreSQL and Redis) reachable from the VM; they are not provisioned by the deploy
-     compose file.
+   - The deploy compose file now provisions PostgreSQL and Redis on the same VM. Database files persist in the `db-data` Docker
+     volume; ensure the VM has sufficient disk and that `/var/lib/docker` is not cleared between reboots.
 
 3. **GitHub Secrets**
    Set the following secrets in the repository so the workflow can push images and connect to the VM:
@@ -45,8 +45,9 @@ The workflow is defined in [`.github/workflows/oci-deploy.yml`](../.github/workf
 
 2. **Deploy**
    - Copies `infra/docker/docker-compose.deploy.yml` to `/opt/kyodoku` on the target VM (creating the directory if needed).
-   - Logs in to OCIR on the VM, pulls the built image, and runs `docker compose -f docker-compose.deploy.yml up -d bot` with
-     `KYODOKU_IMAGE` set to the tag from the build job (or a manually supplied tag).
+   - Logs in to OCIR on the VM, pulls the built image, and runs `docker compose -f docker-compose.deploy.yml up -d` with
+     `KYODOKU_IMAGE` set to the tag from the build job (or a manually supplied tag). This brings up the bot alongside local
+     PostgreSQL and Redis containers.
 
 ## How to run the deployment
 

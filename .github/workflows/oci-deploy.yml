@@ -99,4 +99,4 @@ jobs:
               -u "${{ secrets.OCIR_USERNAME }}" \
               -p "${{ secrets.OCIR_PASSWORD }}"
             docker pull "$IMAGE"
-            KYODOKU_IMAGE="$IMAGE" docker compose -f docker-compose.deploy.yml up -d bot
+            KYODOKU_IMAGE="$IMAGE" docker compose -f docker-compose.deploy.yml up -d
