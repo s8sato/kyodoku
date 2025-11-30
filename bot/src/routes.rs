@@ -138,7 +138,11 @@ async fn handle_open(
 
     Ok(format!(
         "Opened a reading session for {}.\nText channel: <#{}>\nVoice channel: <#{}>",
-        format_entry(&metadata.title, metadata.subtitle.as_deref(), &metadata.isbn_13),
+        format_entry(
+            &metadata.title,
+            metadata.subtitle.as_deref(),
+            &metadata.isbn_13
+        ),
         thread_id,
         voice_id
     ))
@@ -212,11 +216,9 @@ async fn handle_watch(
                 }
 
                 let entry = match state.store.fetch_isbn(&normalized.isbn_13).await? {
-                    Some(record) => format_entry(
-                        &record.title,
-                        record.subtitle.as_deref(),
-                        &record.isbn_13,
-                    ),
+                    Some(record) => {
+                        format_entry(&record.title, record.subtitle.as_deref(), &record.isbn_13)
+                    }
                     None => format_entry(&normalized.isbn_13, None, &normalized.isbn_13),
                 };
 
@@ -245,11 +247,9 @@ async fn handle_watch(
                 let mut entries = Vec::new();
                 for isbn_13 in watches {
                     let entry = match state.store.fetch_isbn(&isbn_13).await? {
-                        Some(record) => format_entry(
-                            &record.title,
-                            record.subtitle.as_deref(),
-                            &record.isbn_13,
-                        ),
+                        Some(record) => {
+                            format_entry(&record.title, record.subtitle.as_deref(), &record.isbn_13)
+                        }
                         None => format_entry(&isbn_13, None, &isbn_13),
                     };
                     entries.push(entry);
