@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use redis::AsyncCommands;
 use serenity::all::{
-    ChannelId, ChannelType, Context, CreateChannel, CreateMessage, GuildId, UserId,
+    ChannelId, ChannelType, Context, CreateChannel, CreateMessage, EditChannel, GuildId, UserId,
 };
 use tokio::time::sleep;
 use tracing::{error, info, warn};
@@ -21,19 +21,42 @@ pub async fn ensure_isbn_thread(
     metadata: &IsbnMetadata,
     state: Arc<BotState>,
 ) -> Result<ChannelId> {
+    let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
+    let desired_name = truncate_name(&channel_name);
+    let desired_topic = format!("Discussion thread for {}", metadata.display_title());
+
     if let Some(thread) = state
         .store
         .get_thread_id(guild_id, &metadata.isbn_13)
         .await?
     {
-        return Ok(thread);
+        if let Ok(channel) = ctx.http.get_channel(thread).await {
+            if let Some(guild_channel) = channel.guild() {
+                let mut edits = EditChannel::new();
+                let mut needs_update = false;
+
+                if guild_channel.name != desired_name {
+                    edits = edits.name(desired_name.clone());
+                    needs_update = true;
+                }
+
+                if guild_channel.topic.as_deref() != Some(desired_topic.as_str()) {
+                    edits = edits.topic(desired_topic.clone());
+                    needs_update = true;
+                }
+
+                if needs_update {
+                    guild_channel.id.edit(&ctx.http, edits).await?;
+                }
+
+                return Ok(thread);
+            }
+        }
     }
 
-    let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
-    let topic = format!("Discussion thread for {}", metadata.display_title());
-    let mut channel = CreateChannel::new(truncate_name(&channel_name))
+    let mut channel = CreateChannel::new(desired_name)
         .kind(ChannelType::Text)
-        .topic(topic);
+        .topic(desired_topic);
     if let Some(category_id) = state.config.text_channel_category_id {
         channel = channel.category(category_id);
     }
