@@ -11,8 +11,8 @@ use async_trait::async_trait;
 use dotenvy::dotenv;
 use redis::Client as RedisClient;
 use serenity::all::{
-    ApplicationId, ChannelId, Client, Context, GatewayIntents, GuildId, Interaction, Ready,
-    VoiceState,
+    ApplicationId, ChannelId, Client, Context, GatewayIntents, GuildId, Interaction, Message,
+    MessageType, Ready, VoiceState,
 };
 use serenity::prelude::TypeMapKey;
 use songbird::SerenityInit;
@@ -30,6 +30,7 @@ pub struct Config {
     pub redis_url: String,
     pub reading_session_activation_threshold: usize,
     pub voice_cleanup_delay_seconds: u64,
+    pub command_input_channel_id: Option<ChannelId>,
     pub text_channel_category_id: Option<ChannelId>,
     pub voice_channel_category_id: Option<ChannelId>,
     pub allowed_guilds: HashSet<GuildId>,
@@ -52,6 +53,8 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(60);
+        let command_input_channel_id =
+            Self::channel_id_from_env("COMMAND_INPUT_CHANNEL_ID", "command input")?;
         let text_channel_category_id =
             Self::channel_id_from_env("TEXT_CHANNEL_CATEGORY_ID", "text")?;
         let voice_channel_category_id =
@@ -81,6 +84,7 @@ impl Config {
             redis_url,
             reading_session_activation_threshold,
             voice_cleanup_delay_seconds,
+            command_input_channel_id,
             text_channel_category_id,
             voice_channel_category_id,
             allowed_guilds,
@@ -180,6 +184,70 @@ impl serenity::prelude::EventHandler for Handler {
 
         if let Err(err) = routes::handle_interaction(&ctx, &command, state).await {
             error!("failed to handle command: {err:?}");
+        }
+    }
+
+    async fn message(&self, ctx: Context, message: Message) {
+        let Some(state) = Handler::state(&ctx).await else {
+            error!("Bot state missing from context");
+            return;
+        };
+
+        let Some(channel_id) = state.config.command_input_channel_id else {
+            return;
+        };
+
+        if message.channel_id != channel_id {
+            return;
+        }
+
+        if let Some(guild_id) = message.guild_id {
+            if !Handler::enforce_guild_allowlist(&ctx, &state, guild_id).await {
+                return;
+            }
+        }
+
+        if message.author.bot || message.webhook_id.is_some() {
+            return;
+        }
+
+        if matches!(
+            message.kind,
+            MessageType::ChatInputCommand | MessageType::ContextMenuCommand
+        ) {
+            return;
+        }
+
+        let is_admin = if let Some(guild_id) = message.guild_id {
+            match guild_id.member(&ctx.http, message.author.id).await {
+                Ok(member) => match member.permissions(&ctx.cache) {
+                    Ok(permissions) => permissions.administrator(),
+                    Err(err) => {
+                        warn!(
+                            "failed to compute permissions for member {}: {err:?}",
+                            message.author.id
+                        );
+                        false
+                    }
+                },
+                Err(err) => {
+                    warn!(
+                        "failed to fetch member {} from guild {guild_id}: {err:?}",
+                        message.author.id
+                    );
+                    false
+                }
+            }
+        } else {
+            false
+        };
+
+        if is_admin {
+            return;
+        }
+
+        if let Err(err) = message.delete(&ctx.http).await {
+            warn!("failed to delete message {}: {err:?}", message.id);
         }
     }
 
