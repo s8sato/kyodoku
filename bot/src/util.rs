@@ -79,12 +79,12 @@ pub async fn ensure_isbn_voice_channel(
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let desired_name = truncate_name(&channel_name);
 
-    if let Some(channel) = state
+    if let Some(channel_id) = state
         .store
         .get_active_voice_channel(guild_id, &metadata.isbn_13)
         .await?
     {
-        if let Ok(channel) = ctx.http.get_channel(channel).await {
+        if let Ok(channel) = ctx.http.get_channel(channel_id).await {
             if let Some(guild_channel) = channel.guild() {
                 let mut edits = EditChannel::new();
                 let mut needs_update = false;
@@ -105,7 +105,7 @@ pub async fn ensure_isbn_voice_channel(
                     guild_channel.id.edit(&ctx.http, edits).await?;
                 }
 
-                return Ok(channel);
+                return Ok(guild_channel.id);
             }
         }
     }
