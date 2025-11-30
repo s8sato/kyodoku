@@ -20,11 +20,11 @@ Discord  →  Bot (Gateway)  →  Postgres/Redis
 
 ## 3. Channel Lifecycle
 
-1. `/open` invoked.
-2. ISBN normalized → metadata fetched → VC created.
-3. Users join VC.
-4. When member count = 0 for 2 minutes, VC auto-deletes.
-5. Text channel persists.
+1. `/open` is invoked.
+2. The ISBN is normalized, metadata is fetched, and the VC/TC are created if they do not already exist.
+3. Users may join the voice channel.
+4. When the member count remains 0 for a certain duration, the voice channel is automatically deleted.
+5. The text channel remains persistent.
 
 ## 4. Module Breakdown (planned)
 
