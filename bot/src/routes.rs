@@ -8,7 +8,7 @@ use serenity::all::{
     CreateInteractionResponseFollowup, CreateInteractionResponseMessage, InteractionResponseFlags,
     MessageFlags,
 };
-use tracing::error;
+use tracing::debug;
 
 use crate::isbn;
 use crate::util;
@@ -43,7 +43,7 @@ pub async fn handle_interaction(
     let content = match response {
         Ok(message) => message,
         Err(err) => {
-            error!("command failed: {err:?}");
+            debug!("command failed: {err:?}");
             format!("❌ {err}")
         }
     };
