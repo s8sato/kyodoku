@@ -47,6 +47,15 @@ pub async fn ensure_isbn_text_channel(
                     needs_update = true;
                 }
 
+                if let Some(category_id) = state.config.text_channel_category_id {
+                    if guild_channel.parent_id != Some(category_id) {
+                        edits = edits.category(category_id);
+                    }
+
+                    edits = edits.position(0);
+                    needs_update = true;
+                }
+
                 if needs_update {
                     guild_channel.id.edit(&ctx.http, edits).await?;
                 }
@@ -63,6 +72,10 @@ pub async fn ensure_isbn_text_channel(
         channel = channel.category(category_id);
     }
     let channel = guild_id.create_channel(&ctx.http, channel).await?;
+
+    if let Some(category_id) = state.config.text_channel_category_id {
+        move_channel_to_category_top(ctx, channel.id, category_id).await?;
+    }
 
     let components = vec![CreateActionRow::Buttons(vec![CreateButton::new(format!(
         "{WATCH_ACTION_PREFIX}add:{}",
@@ -116,8 +129,10 @@ pub async fn ensure_isbn_voice_channel(
                 if let Some(category_id) = state.config.voice_channel_category_id {
                     if guild_channel.parent_id != Some(category_id) {
                         edits = edits.category(category_id);
-                        needs_update = true;
                     }
+
+                    edits = edits.position(0);
+                    needs_update = true;
                 }
 
                 if needs_update {
@@ -134,6 +149,10 @@ pub async fn ensure_isbn_voice_channel(
         voice = voice.category(category_id);
     }
     let voice = guild_id.create_channel(&ctx.http, voice).await?;
+
+    if let Some(category_id) = state.config.voice_channel_category_id {
+        move_channel_to_category_top(ctx, voice.id, category_id).await?;
+    }
 
     state
         .store
@@ -211,6 +230,21 @@ async fn finalize_cleanup(
 
     let mut conn = state.redis.get_async_connection().await?;
     let _: redis::RedisResult<i32> = conn.del(&key).await;
+    Ok(())
+}
+
+async fn move_channel_to_category_top(
+    ctx: &Context,
+    channel_id: ChannelId,
+    category_id: ChannelId,
+) -> Result<()> {
+    channel_id
+        .edit(
+            &ctx.http,
+            EditChannel::new().category(category_id).position(0),
+        )
+        .await?;
+
     Ok(())
 }
 
