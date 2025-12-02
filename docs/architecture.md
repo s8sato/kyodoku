@@ -35,6 +35,5 @@ Discord  →  Bot (Gateway)  →  Postgres/Redis
 
 ## 5. External APIs
 
-- Open Library (primary)
-- Google Books (secondary)
-- Manual override when both APIs fail
+- Google Books (primary)
+- Open Library (fallback)

@@ -33,7 +33,6 @@ impl IsbnMetadata {
 pub enum MetadataSource {
     OpenLibrary,
     GoogleBooks,
-    Manual,
 }
 
 impl MetadataSource {
@@ -41,7 +40,6 @@ impl MetadataSource {
         match self {
             MetadataSource::OpenLibrary => "open_library",
             MetadataSource::GoogleBooks => "google_books",
-            MetadataSource::Manual => "manual",
         }
     }
 }
@@ -175,32 +173,17 @@ fn is_valid_isbn13(isbn: &str) -> bool {
     }
 }
 
-pub async fn lookup_metadata(
-    client: &Client,
-    normalized: &NormalizedIsbn,
-    title_override: Option<&str>,
-) -> Result<IsbnMetadata> {
-    if let Some(meta) = fetch_open_library(client, normalized).await? {
-        return Ok(meta);
-    }
-
+pub async fn lookup_metadata(client: &Client, normalized: &NormalizedIsbn) -> Result<IsbnMetadata> {
     if let Some(meta) = fetch_google_books(client, normalized).await? {
         return Ok(meta);
     }
 
-    if let Some(title) = title_override {
-        return Ok(IsbnMetadata {
-            isbn_13: normalized.isbn_13.clone(),
-            isbn_10: normalized.isbn_10.clone(),
-            title: title.to_string(),
-            subtitle: None,
-            authors: Vec::new(),
-            source: MetadataSource::Manual,
-        });
+    if let Some(meta) = fetch_open_library(client, normalized).await? {
+        return Ok(meta);
     }
 
     Err(anyhow!(
-        "Unable to resolve metadata for ISBN {}",
+        "Unable to resolve metadata for ISBN {}. The title may be a pre-release or newly published and not yet cataloged; please consider contributing details to Open Library to improve coverage.",
         normalized.isbn_13
     ))
 }

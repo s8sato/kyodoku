@@ -339,14 +339,24 @@ async fn send_dm(http: &serenity::http::Http, user_id: UserId, content: &str) ->
 
 fn truncate_name(name: &str) -> String {
     const MAX_LEN: usize = 90;
+    const SUFFIX: &str = "…";
+
     if name.len() <= MAX_LEN {
         return name.to_string();
     }
 
-    name.char_indices()
-        .take_while(|(idx, _)| *idx < MAX_LEN)
-        .map(|(_, ch)| ch)
-        .collect()
+    let max_without_suffix = MAX_LEN.saturating_sub(SUFFIX.len());
+    let mut truncated = String::new();
+
+    for (idx, ch) in name.char_indices() {
+        if idx + ch.len_utf8() > max_without_suffix {
+            break;
+        }
+        truncated.push(ch);
+    }
+
+    truncated.push_str(SUFFIX);
+    truncated
 }
 
 #[cfg(test)]
@@ -359,7 +369,8 @@ mod tests {
         let truncated = truncate_name(&name);
 
         assert_eq!(truncated.len(), 90);
-        assert!(truncated.chars().all(|ch| ch == 'a'));
+        assert!(truncated.starts_with(&"a".repeat(87)));
+        assert_eq!(truncated.chars().last(), Some('…'));
     }
 
     #[test]
@@ -369,7 +380,7 @@ mod tests {
         let truncated = truncate_name(&name);
 
         assert!(truncated.len() < name.len());
-        assert!(truncated.len() % "本".len() == 0);
-        assert!(truncated.chars().all(|ch| ch == '本'));
+        assert!(truncated.starts_with(&"本".repeat(29)));
+        assert_eq!(truncated.chars().last(), Some('…'));
     }
 }

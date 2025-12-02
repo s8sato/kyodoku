@@ -19,17 +19,17 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ## 3. Slash Commands
 
-### `/open <code> [title_override]`
+### `/open <code>`
 
 * **Purpose:** Create or reuse a voice channel associated with the given ISBN.
 * **Arguments:**
 
   * `code`: ISBN-10 or ISBN-13, with or without hyphens.
-  * `title_override`: Optional manual title if metadata lookup fails.
 * **Behavior:**
 
   * Normalize ISBN (convert ISBN-10 → ISBN-13).
-  * Fetch metadata (Open Library → Google Books → fallback to override).
+  * Fetch metadata (Google Books → Open Library).
+  * When metadata resolution fails, return an error noting it may be a pre-release or newly published title and encourage contributions to Open Library.
   * Create text channel if missing, voice channel if none exists.
   * Respond with links to both channels.
   * Voice channel auto-deletes after a period of zero members.
@@ -69,6 +69,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 * ISBN text channels belong to the category provided via the `TEXT_CHANNEL_CATEGORY_ID` environment variable when set; otherwise they are created at the guild root.
 * ISBN voice channels belong to the category provided via the `VOICE_CHANNEL_CATEGORY_ID` environment variable when set; otherwise they are created at the guild root.
+* Channel names exceeding the length limit are truncated with an ellipsis suffix to make the shortening visible.
 
 ### Session Deletion
 
@@ -97,7 +98,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ## 6. External Integrations
 
-* **Metadata Sources:** Open Library (default), Google Books (fallback), manual title override as final fallback.
+* **Metadata Sources:** Google Books (default), Open Library (fallback).
 * **Storage:** PostgreSQL for persistence; Redis for caching and distributed locks.
 * **Hosting:** Docker-based, minimal dependencies.
 
