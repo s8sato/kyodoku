@@ -4,7 +4,8 @@ use std::time::Duration;
 use anyhow::Result;
 use redis::AsyncCommands;
 use serenity::all::{
-    ChannelId, ChannelType, Context, CreateChannel, CreateMessage, EditChannel, GuildId, UserId,
+    ButtonStyle, ChannelId, ChannelType, Context, CreateActionRow, CreateButton, CreateChannel,
+    CreateMessage, EditChannel, GuildId, UserId,
 };
 use tokio::time::sleep;
 use tracing::{error, info, warn};
@@ -14,6 +15,7 @@ use crate::BotState;
 
 const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
 const ACTIVATION_TTL_SECONDS: i64 = 600;
+pub const WATCH_ACTION_PREFIX: &str = "watch:";
 
 pub async fn ensure_isbn_text_channel(
     ctx: &Context,
@@ -282,8 +284,12 @@ async fn notify_watchers(
     let text_ch_id = state.store.get_text_channel_id(guild_id, &isbn).await?;
     let content = format_dm_content(&entry, text_ch_id, voice_ch_id);
 
+    let components = vec![CreateActionRow::Buttons(vec![create_remove_button(
+        guild_id, &isbn,
+    )])];
+
     for watcher in watchers {
-        if let Err(err) = send_dm(&ctx.http, watcher, &content).await {
+        if let Err(err) = send_dm(&ctx.http, watcher, &content, components.clone()).await {
             warn!(
                 "failed to send DM for reading session {} to {}: {err:?}",
                 isbn, watcher
@@ -329,12 +335,28 @@ fn format_metadata_post(metadata: &IsbnMetadata) -> String {
     content
 }
 
-async fn send_dm(http: &serenity::http::Http, user_id: UserId, content: &str) -> Result<()> {
+fn create_remove_button(guild_id: GuildId, isbn: &str) -> CreateButton {
+    let custom_id = format!("{WATCH_ACTION_PREFIX}remove:{}:{}", guild_id.get(), isbn);
+
+    CreateButton::new(custom_id)
+        .label("Remove")
+        .style(ButtonStyle::Danger)
+}
+
+async fn send_dm(
+    http: &serenity::http::Http,
+    user_id: UserId,
+    content: &str,
+    components: Vec<CreateActionRow>,
+) -> Result<()> {
     let channel = user_id.create_dm_channel(http).await?;
 
     channel
         .id
-        .send_message(http, CreateMessage::new().content(content))
+        .send_message(
+            http,
+            CreateMessage::new().content(content).components(components),
+        )
         .await?;
 
     Ok(())

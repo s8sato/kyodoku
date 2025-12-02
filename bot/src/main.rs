@@ -167,23 +167,37 @@ impl serenity::prelude::EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        let Some(command) = interaction.as_command() else {
-            return;
-        };
-
         let Some(state) = Handler::state(&ctx).await else {
             error!("Bot state missing from context");
             return;
         };
 
-        if let Some(guild_id) = command.guild_id {
-            if !Handler::enforce_guild_allowlist(&ctx, &state, guild_id).await {
-                return;
-            }
-        }
+        match interaction {
+            Interaction::Command(command) => {
+                if let Some(guild_id) = command.guild_id {
+                    if !Handler::enforce_guild_allowlist(&ctx, &state, guild_id).await {
+                        return;
+                    }
+                }
 
-        if let Err(err) = routes::handle_interaction(&ctx, &command, state).await {
-            error!("failed to handle command: {err:?}");
+                if let Err(err) = routes::handle_interaction(&ctx, &command, state).await {
+                    error!("failed to handle command: {err:?}");
+                }
+            }
+            Interaction::MessageComponent(component) => {
+                if let Some(guild_id) = component.guild_id {
+                    if !Handler::enforce_guild_allowlist(&ctx, &state, guild_id).await {
+                        return;
+                    }
+                }
+
+                if let Err(err) =
+                    routes::handle_component_interaction(&ctx, &component, state).await
+                {
+                    error!("failed to handle component: {err:?}");
+                }
+            }
+            _ => {}
         }
     }
 

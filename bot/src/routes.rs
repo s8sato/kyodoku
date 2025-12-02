@@ -5,13 +5,13 @@ use anyhow::{anyhow, Context, Result};
 use serenity::all::{
     CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
     Context as SerenityContext, CreateCommand, CreateCommandOption, CreateInteractionResponse,
-    CreateInteractionResponseFollowup, CreateInteractionResponseMessage, InteractionResponseFlags,
-    MessageFlags,
+    CreateInteractionResponseFollowup, CreateInteractionResponseMessage, GuildId,
+    InteractionResponseFlags, MessageComponentInteraction, MessageFlags,
 };
 use tracing::debug;
 
 use crate::isbn;
-use crate::util;
+use crate::util::{self, WATCH_ACTION_PREFIX};
 use crate::BotState;
 
 pub async fn register_commands(http: &serenity::http::Http) -> Result<()> {
@@ -56,6 +56,76 @@ pub async fn handle_interaction(
                 .flags(MessageFlags::EPHEMERAL),
         )
         .await?;
+
+    Ok(())
+}
+
+pub async fn handle_component_interaction(
+    ctx: &SerenityContext,
+    interaction: &MessageComponentInteraction,
+    state: Arc<BotState>,
+) -> Result<()> {
+    let custom_id = interaction.data.custom_id.as_str();
+
+    if !custom_id.starts_with(WATCH_ACTION_PREFIX) {
+        return Ok(());
+    }
+
+    let payload = &custom_id[WATCH_ACTION_PREFIX.len()..];
+    let mut parts = payload.split(':');
+    let Some(action) = parts.next() else {
+        return Ok(());
+    };
+
+    if action != "remove" {
+        return Ok(());
+    }
+
+    let guild_id_raw = parts
+        .next()
+        .context("Missing guild id in component payload")?;
+    let isbn = parts
+        .next()
+        .context("Missing ISBN value in component payload")?;
+    let guild_id = GuildId::new(guild_id_raw.parse()?);
+
+    state
+        .store
+        .remove_watch(guild_id, interaction.user.id, isbn)
+        .await?;
+
+    let content = if interaction.guild_id.is_some() {
+        format!("Removed `{isbn}` from your watchlist.")
+    } else {
+        format!(
+            "Removed `{isbn}` from your watchlist for guild `{}`.",
+            guild_id
+        )
+    };
+
+    if interaction.guild_id.is_some() {
+        interaction
+            .create_response(
+                ctx,
+                CreateInteractionResponse::UpdateMessage(
+                    CreateInteractionResponseMessage::new()
+                        .content(content)
+                        .components(vec![]),
+                ),
+            )
+            .await?;
+    } else {
+        interaction
+            .create_response(
+                ctx,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content(content)
+                        .components(vec![]),
+                ),
+            )
+            .await?;
+    }
 
     Ok(())
 }
@@ -131,10 +201,7 @@ async fn handle_open(
 
     Ok(format!(
         "Opened a reading session for **{}**(`{}`).\nText channel: <#{}>\nVoice channel: <#{}>",
-        display_title(
-            &metadata.title,
-            metadata.subtitle.as_deref(),
-        ),
+        display_title(&metadata.title, metadata.subtitle.as_deref(),),
         metadata.isbn_13,
         text_ch_id,
         voice_ch_id
