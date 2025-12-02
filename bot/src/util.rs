@@ -55,15 +55,12 @@ pub async fn ensure_isbn_text_channel(
                     }
                 }
 
-                if guild_channel.position != 0 {
-                    needs_update = true;
-                }
-
-                edits = edits.position(0);
-
                 if needs_update {
                     guild_channel.id.edit(&ctx.http, edits).await?;
                 }
+
+                move_channel_to_top(ctx, guild_channel.id, state.config.text_channel_category_id)
+                    .await?;
 
                 return Ok(guild_channel.id);
             }
@@ -136,15 +133,16 @@ pub async fn ensure_isbn_voice_channel(
                     }
                 }
 
-                if guild_channel.position != 0 {
-                    needs_update = true;
-                }
-
-                edits = edits.position(0);
-
                 if needs_update {
                     guild_channel.id.edit(&ctx.http, edits).await?;
                 }
+
+                move_channel_to_top(
+                    ctx,
+                    guild_channel.id,
+                    state.config.voice_channel_category_id,
+                )
+                .await?;
 
                 return Ok(guild_channel.id);
             }
@@ -244,13 +242,44 @@ async fn move_channel_to_top(
     channel_id: ChannelId,
     category_id: Option<ChannelId>,
 ) -> Result<()> {
-    let mut edits = EditChannel::new().position(0);
+    let channel = ctx.http.get_channel(channel_id).await?;
+    let Some(guild_channel) = channel.guild() else {
+        return Ok(());
+    };
 
-    if let Some(category_id) = category_id {
-        edits = edits.category(category_id);
+    let guild_id = guild_channel.guild_id;
+    let target_parent = category_id.or(guild_channel.parent_id);
+
+    if let Some(category_id) = target_parent {
+        channel_id
+            .edit(&ctx.http, EditChannel::new().category(category_id))
+            .await?;
     }
 
-    channel_id.edit(&ctx.http, edits).await?;
+    let mut siblings: Vec<_> = guild_id
+        .channels(&ctx.http)
+        .await?
+        .into_values()
+        .filter(|ch| ch.id != channel_id)
+        .filter(|ch| match target_parent {
+            Some(parent) => ch.parent_id == Some(parent),
+            None => ch.parent_id.is_none(),
+        })
+        .collect();
+
+    siblings.sort_by_key(|ch| (ch.position, ch.id));
+
+    let mut positions = Vec::with_capacity(siblings.len() + 1);
+    positions.push((channel_id, 0));
+
+    positions.extend(
+        siblings
+            .into_iter()
+            .enumerate()
+            .map(|(idx, sibling)| (sibling.id, (idx + 1) as u64)),
+    );
+
+    guild_id.reorder_channels(&ctx.http, positions).await?;
 
     Ok(())
 }
