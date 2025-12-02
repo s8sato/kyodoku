@@ -136,7 +136,7 @@ pub fn format_archive_topic(archived_at: SystemTime, archive_grace: Duration) ->
     let expires_at = archived_dt + grace_delta;
 
     format!(
-        "{ARCHIVE_MARKER_PREFIX}{archived_at_secs}] Archived on {}. Scheduled for deletion on {} (再びオープンされないかぎり削除されます).",
+        "{ARCHIVE_MARKER_PREFIX}{archived_at_secs}] Archived on {}. Scheduled for deletion on {} unless reopened.",
         archived_dt.format("%Y-%m-%d"),
         expires_at.format("%Y-%m-%d")
     )
