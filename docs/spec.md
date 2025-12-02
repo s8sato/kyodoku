@@ -84,14 +84,13 @@ The project follows a *spec-first* approach — this document serves as the sour
 * Notify all users who have that ISBN on their watchlist via DM.
   * DM message includes links to the ISBN text discussion channel (if present) and the active voice channel.
 
-### Guild Access Control
-
-* The bot must only remain in guilds explicitly listed by the `ALLOWED_GUILD_IDS` environment variable (comma-separated Discord guild IDs).
-* When invited to any guild not on this list, or when the environment variable is empty, the bot immediately leaves to avoid unintended resource usage.
-
 ### Command Intake Moderation
 
 * When `COMMAND_INPUT_CHANNEL_ID` is configured, the bot watches that text channel and immediately deletes any non-command messages posted by non-admin members to keep the slash-command entry point clean.
+
+### Bot Visibility
+
+* To avoid unintended invites, the Discord application should have the **Public Bot** toggle disabled in the Developer Portal.
 
 ---
 
