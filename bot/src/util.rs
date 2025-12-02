@@ -2,6 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use redis::AsyncCommands;
 use serenity::all::{
     ButtonStyle, ChannelId, ChannelType, Context, CreateActionRow, CreateButton, CreateChannel,
@@ -15,7 +17,6 @@ use crate::BotState;
 
 pub const WATCH_ACTION_PREFIX: &str = "watch:";
 const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
-const ACTIVATION_TTL_SECONDS: i64 = 600;
 const READING_SESSION_ACTIVATION_THRESHOLD: usize = 1;
 
 pub async fn ensure_isbn_text_channel(
@@ -112,12 +113,12 @@ pub async fn ensure_isbn_voice_channel(
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let desired_name = truncate_name(&channel_name);
 
-    if let Some(channel_id) = state
+    if let Some(session) = state
         .store
-        .get_active_voice_channel(guild_id, &metadata.isbn_13)
+        .get_active_voice_session(guild_id, &metadata.isbn_13)
         .await?
     {
-        if let Ok(channel) = ctx.http.get_channel(channel_id).await {
+        if let Ok(channel) = ctx.http.get_channel(session.channel_id).await {
             if let Some(guild_channel) = channel.guild() {
                 let mut edits = EditChannel::new();
                 let mut needs_update = false;
@@ -155,7 +156,7 @@ pub async fn ensure_isbn_voice_channel(
         move_channel_to_category_top(ctx, voice.id, category_id).await?;
     }
 
-    state
+    let _session_started_at = state
         .store
         .start_voice_session(guild_id, voice.id, &metadata.isbn_13)
         .await?;
@@ -223,6 +224,11 @@ async fn finalize_cleanup(
         return Ok(());
     }
 
+    let session_info = state
+        .store
+        .get_active_voice_session_by_channel(channel_id)
+        .await?;
+
     info!("Deleting inactive voice channel {}", channel_id);
     if let Err(err) = channel_id.delete(&ctx.http).await {
         warn!("Unable to delete channel {}: {err:?}", channel_id);
@@ -230,6 +236,9 @@ async fn finalize_cleanup(
     state.store.end_voice_session(channel_id).await?;
 
     let mut conn = state.redis.get_async_connection().await?;
+    if let Some(session) = session_info {
+        clear_activation_flag(&mut conn, channel_id, session.started_at).await;
+    }
     let _: redis::RedisResult<i32> = conn.del(&key).await;
     Ok(())
 }
@@ -261,6 +270,52 @@ fn current_voice_members(ctx: &Context, guild_id: GuildId, channel_id: ChannelId
     }
 }
 
+#[async_trait]
+trait ActivationCache {
+    async fn record_if_new(&mut self, key: &str) -> Result<bool>;
+
+    async fn clear(&mut self, key: &str);
+}
+
+#[async_trait]
+impl ActivationCache for redis::aio::Connection {
+    async fn record_if_new(&mut self, key: &str) -> Result<bool> {
+        let inserted: bool = self.set_nx(key, 1).await?;
+        Ok(inserted)
+    }
+
+    async fn clear(&mut self, key: &str) {
+        let _: redis::RedisResult<i32> = self.del(key).await;
+    }
+}
+
+fn activation_cache_key(channel_id: ChannelId, started_at: DateTime<Utc>) -> String {
+    format!(
+        "voice:active:{}:{}",
+        channel_id.get(),
+        started_at.timestamp_millis()
+    )
+}
+
+async fn record_activation_if_new(
+    cache: &mut impl ActivationCache,
+    channel_id: ChannelId,
+    started_at: DateTime<Utc>,
+) -> Result<(bool, String)> {
+    let key = activation_cache_key(channel_id, started_at);
+    let inserted: bool = cache.record_if_new(&key).await?;
+    Ok((inserted, key))
+}
+
+async fn clear_activation_flag(
+    cache: &mut impl ActivationCache,
+    channel_id: ChannelId,
+    started_at: DateTime<Utc>,
+) {
+    let key = activation_cache_key(channel_id, started_at);
+    cache.clear(&key).await;
+}
+
 async fn maybe_notify_activation(
     ctx: Context,
     state: Arc<BotState>,
@@ -273,13 +328,20 @@ async fn maybe_notify_activation(
         return Ok(());
     }
 
+    let Some(session) = state
+        .store
+        .get_active_voice_session_by_channel(channel_id)
+        .await?
+    else {
+        return Ok(());
+    };
+
     let mut conn = state.redis.get_async_connection().await?;
-    let key = format!("voice:active:{}", channel_id.get());
-    let inserted: bool = conn.set_nx(&key, 1).await?;
+    let (inserted, activation_key) =
+        record_activation_if_new(&mut conn, channel_id, session.started_at).await?;
     if !inserted {
         return Ok(());
     }
-    let _: bool = conn.expire(&key, ACTIVATION_TTL_SECONDS).await?;
 
     let notify_result = notify_watchers(&ctx, &state, guild_id, channel_id).await;
     if let Err(err) = notify_result {
@@ -287,7 +349,7 @@ async fn maybe_notify_activation(
             "failed to notify watchers for channel {}: {err:?}",
             channel_id
         );
-        if let Err(del_err) = conn.del::<_, i32>(&key).await {
+        if let Err(del_err) = conn.del::<_, i32>(&activation_key).await {
             warn!(
                 "failed to reset activation flag for {}: {del_err:?}",
                 channel_id
@@ -464,7 +526,15 @@ fn truncate_name(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::truncate_name;
+    use super::{
+        clear_activation_flag, record_activation_if_new, truncate_name, ActivationCache,
+        READING_SESSION_ACTIVATION_THRESHOLD,
+    };
+    use anyhow::Result;
+    use async_trait::async_trait;
+    use chrono::{Duration, Utc};
+    use serenity::all::ChannelId;
+    use std::collections::HashSet;
 
     #[test]
     fn truncate_name_preserves_ascii_boundaries() {
@@ -485,5 +555,52 @@ mod tests {
         assert!(truncated.len() < name.len());
         assert!(truncated.starts_with(&"本".repeat(29)));
         assert_eq!(truncated.chars().last(), Some('…'));
+    }
+
+    #[tokio::test]
+    async fn activation_flags_are_session_scoped() {
+        let mut cache = MockActivationCache::default();
+
+        let channel_id = ChannelId::new(READING_SESSION_ACTIVATION_THRESHOLD as u64);
+        let started_at = Utc::now();
+
+        let (first_inserted, first_key) =
+            record_activation_if_new(&mut cache, channel_id, started_at)
+                .await
+                .expect("first activation");
+        assert!(first_inserted);
+
+        let (second_inserted, second_key) =
+            record_activation_if_new(&mut cache, channel_id, started_at)
+                .await
+                .expect("repeat activation");
+        assert!(!second_inserted);
+        assert_eq!(first_key, second_key);
+
+        clear_activation_flag(&mut cache, channel_id, started_at).await;
+
+        let restarted_at = started_at + Duration::seconds(30);
+        let (new_session_inserted, new_key) =
+            record_activation_if_new(&mut cache, channel_id, restarted_at)
+                .await
+                .expect("new session activation");
+        assert!(new_session_inserted);
+        assert_ne!(first_key, new_key);
+    }
+
+    #[derive(Default)]
+    struct MockActivationCache {
+        keys: HashSet<String>,
+    }
+
+    #[async_trait]
+    impl ActivationCache for MockActivationCache {
+        async fn record_if_new(&mut self, key: &str) -> Result<bool> {
+            Ok(self.keys.insert(key.to_string()))
+        }
+
+        async fn clear(&mut self, key: &str) {
+            self.keys.remove(key);
+        }
     }
 }
