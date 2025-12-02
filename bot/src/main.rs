@@ -28,7 +28,6 @@ pub struct Config {
     pub application_id: u64,
     pub database_url: String,
     pub redis_url: String,
-    pub reading_session_activation_threshold: usize,
     pub voice_cleanup_delay_seconds: u64,
     pub command_input_channel_id: Option<ChannelId>,
     pub text_channel_category_id: Option<ChannelId>,
@@ -42,12 +41,6 @@ impl Config {
         let application_id = std::env::var("APPLICATION_ID")?.parse()?;
         let database_url = std::env::var("DATABASE_URL")?;
         let redis_url = std::env::var("REDIS_URL")?;
-        let reading_session_activation_threshold =
-            std::env::var("READING_SESSION_ACTIVATION_THRESHOLD")
-                .ok()
-                .and_then(|value| value.parse().ok())
-                .filter(|value| *value > 0)
-                .unwrap_or(1);
         let voice_cleanup_delay_seconds = std::env::var("VOICE_CLEANUP_DELAY_SECONDS")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -82,7 +75,6 @@ impl Config {
             application_id,
             database_url,
             redis_url,
-            reading_session_activation_threshold,
             voice_cleanup_delay_seconds,
             command_input_channel_id,
             text_channel_category_id,

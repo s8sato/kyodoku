@@ -80,8 +80,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ### Notifications
 
-* When an ISBN’s voice channel reaches the configured participant threshold, the session is considered *active*.
-  * Threshold defaults to **1** participant and can be overridden via the `READING_SESSION_ACTIVATION_THRESHOLD` environment variable.
+* When the **first participant** joins an ISBN’s voice channel, the session is considered *active*.
 * Notify all users who have that ISBN on their watchlist via DM.
   * DM message includes links to the ISBN text discussion channel (if present) and the active voice channel.
 

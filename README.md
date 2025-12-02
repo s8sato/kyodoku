@@ -11,6 +11,7 @@ requirements.
 - Slash commands for `/open` and `/watch` with metadata lookup via Google Books (primary) and Open Library (fallback).
 - Automatic creation/reuse of text channels and voice channels scoped to each ISBN.
 - Graceful voice channel cleanup after inactivity and Redis-backed deduplication for watcher notifications.
+- DM notifications trigger as soon as the first participant joins a watched ISBN’s voice channel.
 - PostgreSQL persistence with SQLx migrations.
 
 ## Getting Started
