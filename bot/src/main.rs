@@ -36,6 +36,7 @@ pub struct Config {
     pub voice_channel_category_id: ChannelId,
     pub archived_channel_category_id: ChannelId,
     pub text_channel_capacity: usize,
+    pub watchlist_limit: usize,
 }
 
 impl Config {
@@ -64,6 +65,11 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(150);
+        let watchlist_limit = std::env::var("WATCHLIST_LIMIT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(30);
         let command_input_channel_id =
             Self::channel_id_from_env("COMMAND_INPUT_CHANNEL_ID", "command input")?;
         let text_channel_category_id =
@@ -86,6 +92,7 @@ impl Config {
             voice_channel_category_id,
             archived_channel_category_id,
             text_channel_capacity,
+            watchlist_limit,
         })
     }
 
