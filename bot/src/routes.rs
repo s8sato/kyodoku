@@ -130,12 +130,12 @@ async fn handle_open(
         util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
 
     Ok(format!(
-        "Opened a reading session for {}.\nText channel: <#{}>\nVoice channel: <#{}>",
-        format_entry(
+        "Opened a reading session for **{}**(`{}`).\nText channel: <#{}>\nVoice channel: <#{}>",
+        display_title(
             &metadata.title,
             metadata.subtitle.as_deref(),
-            &metadata.isbn_13
         ),
+        metadata.isbn_13,
         text_ch_id,
         voice_ch_id
     ))
@@ -190,7 +190,7 @@ async fn handle_watch(
             if added.is_empty() {
                 Ok("No new ISBNs added to your watchlist.".to_string())
             } else {
-                Ok(format!("Added {} to your watchlist", added.join(", ")))
+                Ok(format!("Added to your watchlist:\n{}", added.join("\n")))
             }
         }
         "remove" => {
@@ -227,8 +227,8 @@ async fn handle_watch(
                 Ok("No ISBNs removed from your watchlist.".to_string())
             } else {
                 Ok(format!(
-                    "Removed {} from your watchlist",
-                    removed.join(", ")
+                    "Removed from your watchlist:\n{}",
+                    removed.join("\n")
                 ))
             }
         }
@@ -248,7 +248,7 @@ async fn handle_watch(
                     entries.push(entry);
                 }
 
-                Ok(format!("You are watching: {}", entries.join(", ")))
+                Ok(format!("You are watching:\n{}", entries.join("\n")))
             }
         }
         other => Err(anyhow!("Unknown watch action: {other}")),
@@ -282,5 +282,5 @@ fn display_title(title: &str, subtitle: Option<&str>) -> String {
 }
 
 fn format_entry(title: &str, subtitle: Option<&str>, isbn_13: &str) -> String {
-    format!("**{}** ({})", display_title(title, subtitle), isbn_13)
+    format!("- `{}` **{}**", isbn_13, display_title(title, subtitle))
 }

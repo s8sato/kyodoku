@@ -268,16 +268,19 @@ async fn notify_watchers(
     }
 
     let record = state.store.fetch_isbn(&isbn).await?;
-    let title = record
+    let entry = record
         .as_ref()
-        .map(|db| match &db.subtitle {
-            Some(sub) if !sub.is_empty() => format!("{}: {}", db.title, sub),
-            _ => db.title.clone(),
+        .map(|db| {
+            let title = match &db.subtitle {
+                Some(sub) if !sub.is_empty() => format!("{}: {}", db.title, sub),
+                _ => db.title.clone(),
+            };
+            format!("**{}**(`{}`)", title, isbn)
         })
-        .unwrap_or_else(|| format!("Session {}", isbn));
+        .unwrap_or_else(|| format!("Session `{}`", isbn));
 
     let text_ch_id = state.store.get_text_channel_id(guild_id, &isbn).await?;
-    let content = format_dm_content(&title, text_ch_id, voice_ch_id);
+    let content = format_dm_content(&entry, text_ch_id, voice_ch_id);
 
     for watcher in watchers {
         if let Err(err) = send_dm(&ctx.http, watcher, &content).await {
@@ -292,11 +295,11 @@ async fn notify_watchers(
 }
 
 fn format_dm_content(
-    title: &str,
+    entry: &str,
     text_channel: Option<ChannelId>,
     voice_channel: ChannelId,
 ) -> String {
-    let mut content = format!("Reading session for **{}** is now active!\n", title);
+    let mut content = format!("Reading session for {} is now active!\n", entry);
 
     if let Some(text_channel) = text_channel {
         content.push_str(&format!("Text channel: <#{}>\n", text_channel.get()));
