@@ -149,7 +149,10 @@ impl Store {
         Ok(())
     }
 
-    pub async fn get_isbn_for_voice_channel(&self, channel_id: ChannelId) -> Result<Option<String>> {
+    pub async fn get_isbn_for_voice_channel(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Option<String>> {
         let record: Option<(String,)> = sqlx::query_as(
             "SELECT isbn_13 FROM voice_channels WHERE channel_id = $1 AND ended_at IS NULL",
         )
@@ -219,12 +222,11 @@ impl Store {
     }
 
     pub async fn get_notification_channel(&self, guild_id: GuildId) -> Result<Option<ChannelId>> {
-        let record: Option<(i64,)> = sqlx::query_as(
-            "SELECT notification_channel_id FROM guilds WHERE guild_id = $1",
-        )
-        .bind(guild_id.get() as i64)
-        .fetch_optional(self.pool())
-        .await?;
+        let record: Option<(i64,)> =
+            sqlx::query_as("SELECT notification_channel_id FROM guilds WHERE guild_id = $1")
+                .bind(guild_id.get() as i64)
+                .fetch_optional(self.pool())
+                .await?;
 
         Ok(record.and_then(|(id,)| {
             if id == 0 {

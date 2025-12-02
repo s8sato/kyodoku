@@ -67,14 +67,6 @@ fn build_open_command() -> CreateCommand {
             CreateCommandOption::new(CommandOptionType::String, "code", "ISBN-10 or ISBN-13")
                 .required(true),
         )
-        .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::String,
-                "title_override",
-                "Override title if lookup fails",
-            )
-            .required(false),
-        )
 }
 
 fn build_watch_command() -> CreateCommand {
@@ -126,15 +118,16 @@ async fn handle_open(
         .guild_id
         .context("Command must be used within a guild")?;
     let code = require_string_option(&command.data.options, "code")?;
-    let title_override = optional_string_option(&command.data.options, "title_override");
 
     let normalized = isbn::normalize(code)?;
-    let metadata = isbn::lookup_metadata(&state.http_client, &normalized, title_override).await?;
+    let metadata = isbn::lookup_metadata(&state.http_client, &normalized).await?;
 
     state.store.upsert_isbn(&metadata).await?;
 
-    let text_ch_id = util::ensure_isbn_text_channel(ctx, guild_id, &metadata, state.clone()).await?;
-    let voice_ch_id = util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
+    let text_ch_id =
+        util::ensure_isbn_text_channel(ctx, guild_id, &metadata, state.clone()).await?;
+    let voice_ch_id =
+        util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
 
     Ok(format!(
         "Opened a reading session for {}.\nText channel: <#{}>\nVoice channel: <#{}>",
@@ -180,7 +173,7 @@ async fn handle_watch(
                     continue;
                 }
 
-                let metadata = isbn::lookup_metadata(&state.http_client, &normalized, None).await?;
+                let metadata = isbn::lookup_metadata(&state.http_client, &normalized).await?;
                 state.store.upsert_isbn(&metadata).await?;
                 state
                     .store
@@ -272,17 +265,6 @@ fn require_string_option<'a>(options: &'a [CommandDataOption], name: &str) -> Re
             _ => None,
         })
         .context(format!("Missing required option '{name}'"))
-}
-
-fn optional_string_option<'a>(options: &'a [CommandDataOption], name: &str) -> Option<&'a str> {
-    options
-        .iter()
-        .find_map(|opt| match (&opt.value, opt.name.as_str()) {
-            (CommandDataOptionValue::String(value), option_name) if option_name == name => {
-                Some(value.as_str())
-            }
-            _ => None,
-        })
 }
 
 fn parse_codes(input: &str) -> Vec<&str> {

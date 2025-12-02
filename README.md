@@ -8,7 +8,7 @@ requirements.
 
 ## Features
 
-- Slash commands for `/open` and `/watch` with metadata lookup via Open Library and Google Books.
+- Slash commands for `/open` and `/watch` with metadata lookup via Google Books (primary) and Open Library (fallback).
 - Automatic creation/reuse of text channels and voice channels scoped to each ISBN.
 - Graceful voice channel cleanup after inactivity and Redis-backed deduplication for watcher notifications.
 - PostgreSQL persistence with SQLx migrations.
