@@ -57,13 +57,8 @@ pub async fn ensure_isbn_text_channel(
                     guild_channel.id.edit(&ctx.http, edits).await?;
                 }
 
-                move_channel_to_top(
-                    ctx,
-                    guild_channel.id,
-                    state.config.text_channel_category_id,
-                    Some(state.config.archived_channel_category_id),
-                )
-                .await?;
+                move_channel_to_top(ctx, guild_channel.id, state.config.text_channel_category_id)
+                    .await?;
 
                 return Ok(guild_channel.id);
             }
@@ -76,13 +71,7 @@ pub async fn ensure_isbn_text_channel(
         .category(state.config.text_channel_category_id);
     let channel = guild_id.create_channel(&ctx.http, channel).await?;
 
-    move_channel_to_top(
-        ctx,
-        channel.id,
-        state.config.text_channel_category_id,
-        Some(state.config.archived_channel_category_id),
-    )
-    .await?;
+    move_channel_to_top(ctx, channel.id, state.config.text_channel_category_id).await?;
 
     let components = vec![CreateActionRow::Buttons(vec![CreateButton::new(format!(
         "{WATCH_ACTION_PREFIX}add:{}",
@@ -146,7 +135,6 @@ pub async fn ensure_isbn_voice_channel(
                     ctx,
                     guild_channel.id,
                     state.config.voice_channel_category_id,
-                    Some(state.config.archived_channel_category_id),
                 )
                 .await?;
 
@@ -160,13 +148,7 @@ pub async fn ensure_isbn_voice_channel(
         .category(state.config.voice_channel_category_id);
     let voice = guild_id.create_channel(&ctx.http, voice).await?;
 
-    move_channel_to_top(
-        ctx,
-        voice.id,
-        state.config.voice_channel_category_id,
-        Some(state.config.archived_channel_category_id),
-    )
-    .await?;
+    move_channel_to_top(ctx, voice.id, state.config.voice_channel_category_id).await?;
 
     state
         .store
@@ -276,7 +258,6 @@ async fn move_channel_to_top(
     ctx: &Context,
     channel_id: ChannelId,
     category_id: ChannelId,
-    skip_reorder_category: Option<ChannelId>,
 ) -> Result<()> {
     let channel = ctx.http.get_channel(channel_id).await?;
     let Some(guild_channel) = channel.guild() else {
@@ -289,10 +270,6 @@ async fn move_channel_to_top(
     channel_id
         .edit(&ctx.http, EditChannel::new().category(category_id))
         .await?;
-
-    if skip_reorder_category == target_parent {
-        return Ok(());
-    }
 
     let mut siblings: Vec<_> = guild_id
         .channels(&ctx.http)
