@@ -90,7 +90,7 @@ The project follows a *spec-first* approach — this document serves as the sour
 * `TEXT_CHANNEL_CAPACITY` (default: **150**) limits how many ISBN channels remain in the active `TEXT_CHANNEL_CATEGORY_ID`.
 * A background task runs every `ARCHIVE_POLL_INTERVAL_SECONDS` (default: **86400** seconds) to:
   * Move channels beyond the configured capacity into the archived category.
-  * Record the archive timestamp and update the channel topic to show the scheduled deletion date based on `ARCHIVE_GRACE_PERIOD_DAYS` (default: **60** days).
+  * Record the archive timestamp and update the channel topic to show the scheduled deletion date based on `ARCHIVE_GRACE_PERIOD_SECONDS` (default: **5184000** seconds = 60 days) with a note that deletion occurs unless reopened.
   * Delete archived channels whose grace period has elapsed.
 * When `/open` is executed for an ISBN whose channel is archived, the channel is moved back to the top of the text category and its archived metadata is cleared.
 

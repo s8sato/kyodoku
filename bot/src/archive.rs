@@ -10,7 +10,6 @@ use tracing::{error, info, warn};
 use crate::BotState;
 
 const ARCHIVE_MARKER_PREFIX: &str = "[archived_at:";
-const SECONDS_PER_DAY: u64 = 86_400;
 
 pub async fn run_archive_loop(http: Arc<Http>, state: Arc<BotState>) {
     let poll_interval = Duration::from_secs(state.config.archive_poll_interval_seconds);
@@ -49,12 +48,7 @@ async fn process_guild(http: &Http, guild_id: GuildId, state: Arc<BotState>) -> 
         .collect();
     text_channels.sort_by_key(|ch| (ch.position, ch.id));
 
-    let archive_grace = Duration::from_secs(
-        state
-            .config
-            .archive_grace_period_days
-            .saturating_mul(SECONDS_PER_DAY),
-    );
+    let archive_grace = Duration::from_secs(state.config.archive_grace_period_seconds);
 
     for channel in text_channels
         .iter()
@@ -142,7 +136,7 @@ pub fn format_archive_topic(archived_at: SystemTime, archive_grace: Duration) ->
     let expires_at = archived_dt + grace_delta;
 
     format!(
-        "{ARCHIVE_MARKER_PREFIX}{archived_at_secs}] Archived on {}. Scheduled for deletion on {}.",
+        "{ARCHIVE_MARKER_PREFIX}{archived_at_secs}] Archived on {}. Scheduled for deletion on {} (再びオープンされないかぎり削除されます).",
         archived_dt.format("%Y-%m-%d"),
         expires_at.format("%Y-%m-%d")
     )

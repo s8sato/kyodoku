@@ -30,7 +30,7 @@ pub struct Config {
     pub redis_url: String,
     pub voice_cleanup_delay_seconds: u64,
     pub archive_poll_interval_seconds: u64,
-    pub archive_grace_period_days: u64,
+    pub archive_grace_period_seconds: u64,
     pub command_input_channel_id: Option<ChannelId>,
     pub text_channel_category_id: ChannelId,
     pub voice_channel_category_id: ChannelId,
@@ -54,11 +54,11 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(86_400);
-        let archive_grace_period_days = std::env::var("ARCHIVE_GRACE_PERIOD_DAYS")
+        let archive_grace_period_seconds = std::env::var("ARCHIVE_GRACE_PERIOD_SECONDS")
             .ok()
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
-            .unwrap_or(60);
+            .unwrap_or(5_184_000);
         let text_channel_capacity = std::env::var("TEXT_CHANNEL_CAPACITY")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -80,7 +80,7 @@ impl Config {
             redis_url,
             voice_cleanup_delay_seconds,
             archive_poll_interval_seconds,
-            archive_grace_period_days,
+            archive_grace_period_seconds,
             command_input_channel_id,
             text_channel_category_id,
             voice_channel_category_id,
