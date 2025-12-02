@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -190,25 +190,39 @@ async fn schedule_cleanup(
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<()> {
+    if current_voice_members(&ctx, guild_id, channel_id) > 0 {
+        return Ok(());
+    }
+
     let cleanup_delay = state.config.voice_cleanup_delay_seconds;
     let cleanup_ttl = cleanup_delay.saturating_add(CLEANUP_TTL_BUFFER_SECONDS);
     let mut conn = state.redis.get_async_connection().await?;
     let key = format!("voice:cleanup:{}", channel_id.get());
-    let inserted: bool = conn.set_nx(&key, 1).await?;
-    if inserted {
-        let _: bool = conn.expire(&key, cleanup_ttl as i64).await?;
-        let ctx_clone = ctx.clone();
-        let state_clone = state.clone();
-        let key_clone = key.clone();
-        tokio::spawn(async move {
-            sleep(Duration::from_secs(cleanup_delay)).await;
-            if let Err(err) =
-                finalize_cleanup(ctx_clone, state_clone, guild_id, channel_id, key_clone).await
-            {
-                error!("failed to cleanup voice channel {}: {err:?}", channel_id);
-            }
-        });
-    }
+    let token = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let _: () = conn.set_ex(&key, token, cleanup_ttl).await?;
+
+    let ctx_clone = ctx.clone();
+    let state_clone = state.clone();
+    let key_clone = key.clone();
+    tokio::spawn(async move {
+        sleep(Duration::from_secs(cleanup_delay)).await;
+        if let Err(err) = finalize_cleanup(
+            ctx_clone,
+            state_clone,
+            guild_id,
+            channel_id,
+            key_clone,
+            token,
+        )
+        .await
+        {
+            error!("failed to cleanup voice channel {}: {err:?}", channel_id);
+        }
+    });
     Ok(())
 }
 
@@ -218,9 +232,19 @@ async fn finalize_cleanup(
     guild_id: GuildId,
     channel_id: ChannelId,
     key: String,
+    expected_token: u64,
 ) -> Result<()> {
-    if current_voice_members(&ctx, guild_id, channel_id) > 0 {
-        let mut conn = state.redis.get_async_connection().await?;
+    let member_count = current_voice_members(&ctx, guild_id, channel_id);
+    let mut conn = state.redis.get_async_connection().await?;
+    let Some(current_token) = conn.get::<_, Option<u64>>(&key).await? else {
+        return Ok(());
+    };
+
+    if current_token != expected_token {
+        return Ok(());
+    }
+
+    if member_count > 0 {
         let _: redis::RedisResult<i32> = conn.del(&key).await;
         return Ok(());
     }
