@@ -98,7 +98,7 @@ impl Store {
         Ok(())
     }
 
-    pub async fn get_active_voice_channel(
+    pub async fn get_active_voice_session(
         &self,
         guild_id: GuildId,
         isbn_13: &str,
@@ -161,6 +161,20 @@ impl Store {
         .await?;
 
         Ok(record.map(|(isbn,)| isbn))
+    }
+
+    pub async fn get_active_voice_session_by_channel(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Option<ChannelId>> {
+        let record: Option<(i64,)> = sqlx::query_as(
+            "SELECT channel_id FROM voice_channels WHERE channel_id = $1 AND ended_at IS NULL",
+        )
+        .bind(channel_id.get() as i64)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(record.map(|(channel_id,)| ChannelId::new(channel_id as u64)))
     }
 
     pub async fn add_watch(&self, guild_id: GuildId, user_id: UserId, isbn_13: &str) -> Result<()> {
