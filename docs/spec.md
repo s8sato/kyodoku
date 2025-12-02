@@ -42,6 +42,8 @@ The project follows a *spec-first* approach — this document serves as the sour
   * `add <code>` — subscribe to notifications when a new session starts.
   * `remove <code>` — unsubscribe from that ISBN.
   * `list` — view all watched ISBNs.
+* **Limits:** `WATCHLIST_LIMIT` (default: **30**) caps how many ISBNs a user can watch per guild. Attempts to exceed the cap
+  return an error.
 
 ---
 
