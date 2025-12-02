@@ -16,6 +16,7 @@ use crate::BotState;
 pub const WATCH_ACTION_PREFIX: &str = "watch:";
 const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
 const ACTIVATION_TTL_SECONDS: i64 = 600;
+const READING_SESSION_ACTIVATION_THRESHOLD: usize = 1;
 
 pub async fn ensure_isbn_text_channel(
     ctx: &Context,
@@ -267,9 +268,8 @@ async fn maybe_notify_activation(
     channel_id: ChannelId,
 ) -> Result<()> {
     let member_count = current_voice_members(&ctx, guild_id, channel_id);
-    let threshold = state.config.reading_session_activation_threshold;
 
-    if member_count < threshold {
+    if member_count < READING_SESSION_ACTIVATION_THRESHOLD {
         return Ok(());
     }
 
@@ -325,7 +325,7 @@ async fn notify_watchers(
         .unwrap_or_else(|| format!("Session `{}`", isbn));
 
     let text_ch_id = state.store.get_text_channel_id(guild_id, &isbn).await?;
-    let content = format_dm_content(&entry, state.config.reading_session_activation_threshold);
+    let content = format_dm_content(&entry);
 
     for watcher in watchers {
         let dm_components = build_channel_buttons(
@@ -346,12 +346,8 @@ async fn notify_watchers(
     Ok(())
 }
 
-fn format_dm_content(entry: &str, activation_threshold: usize) -> String {
+fn format_dm_content(entry: &str) -> String {
     let mut content = format!("Reading session for {} is now active!\n", entry);
-
-    if activation_threshold > 1 {
-        content.push_str(&format!("(Reached {activation_threshold} participants.)\n"));
-    }
 
     content.push_str("Use the buttons below to join the session.");
 
