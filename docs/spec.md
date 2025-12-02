@@ -67,8 +67,8 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ### Channel Placement
 
-* ISBN text channels belong to the category provided via the `TEXT_CHANNEL_CATEGORY_ID` environment variable when set; otherwise they are created at the guild root.
-* ISBN voice channels belong to the category provided via the `VOICE_CHANNEL_CATEGORY_ID` environment variable when set; otherwise they are created at the guild root.
+* ISBN text channels belong to the category provided via the `TEXT_CHANNEL_CATEGORY_ID` environment variable.
+* ISBN voice channels belong to the category provided via the `VOICE_CHANNEL_CATEGORY_ID` environment variable.
 * Channel names exceeding the length limit are truncated with an ellipsis suffix to make the shortening visible.
 
 ### Session Deletion
@@ -83,6 +83,16 @@ The project follows a *spec-first* approach — this document serves as the sour
 * When the **first participant** joins an ISBN’s voice channel, the session is considered *active*.
 * Notify all users who have that ISBN on their watchlist via DM.
   * DM message includes links to the ISBN text discussion channel (if present) and the active voice channel.
+
+### Text Channel Archiving
+
+* A dedicated `ARCHIVED_CHANNEL_CATEGORY_ID` holds overflow text channels.
+* `TEXT_CHANNEL_CAPACITY` (default: **150**) limits how many ISBN channels remain in the active `TEXT_CHANNEL_CATEGORY_ID`.
+* A background task runs every `ARCHIVE_POLL_INTERVAL_SECONDS` (default: **86400** seconds) to:
+  * Move channels beyond the configured capacity into the archived category.
+  * Record the archive timestamp and update the channel topic to show the scheduled deletion date based on `ARCHIVE_GRACE_PERIOD_DAYS` (default: **60** days).
+  * Delete archived channels whose grace period has elapsed.
+* When `/open` is executed for an ISBN whose channel is archived, the channel is moved back to the top of the text category and its archived metadata is cleared.
 
 ### Command Intake Moderation
 

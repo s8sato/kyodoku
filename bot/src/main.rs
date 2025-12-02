@@ -1,3 +1,4 @@
+mod archive;
 mod isbn;
 mod routes;
 mod store;
@@ -5,7 +6,7 @@ mod util;
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use dotenvy::dotenv;
 use redis::Client as RedisClient;
@@ -28,9 +29,13 @@ pub struct Config {
     pub database_url: String,
     pub redis_url: String,
     pub voice_cleanup_delay_seconds: u64,
+    pub archive_poll_interval_seconds: u64,
+    pub archive_grace_period_days: u64,
     pub command_input_channel_id: Option<ChannelId>,
-    pub text_channel_category_id: Option<ChannelId>,
-    pub voice_channel_category_id: Option<ChannelId>,
+    pub text_channel_category_id: ChannelId,
+    pub voice_channel_category_id: ChannelId,
+    pub archived_channel_category_id: ChannelId,
+    pub text_channel_capacity: usize,
 }
 
 impl Config {
@@ -44,12 +49,29 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(60);
+        let archive_poll_interval_seconds = std::env::var("ARCHIVE_POLL_INTERVAL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(86_400);
+        let archive_grace_period_days = std::env::var("ARCHIVE_GRACE_PERIOD_DAYS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(60);
+        let text_channel_capacity = std::env::var("TEXT_CHANNEL_CAPACITY")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(150);
         let command_input_channel_id =
             Self::channel_id_from_env("COMMAND_INPUT_CHANNEL_ID", "command input")?;
         let text_channel_category_id =
-            Self::channel_id_from_env("TEXT_CHANNEL_CATEGORY_ID", "text")?;
+            Self::required_channel_id_from_env("TEXT_CHANNEL_CATEGORY_ID", "text")?;
         let voice_channel_category_id =
-            Self::channel_id_from_env("VOICE_CHANNEL_CATEGORY_ID", "voice")?;
+            Self::required_channel_id_from_env("VOICE_CHANNEL_CATEGORY_ID", "voice")?;
+        let archived_channel_category_id =
+            Self::required_channel_id_from_env("ARCHIVED_CHANNEL_CATEGORY_ID", "archived")?;
 
         Ok(Self {
             discord_token,
@@ -57,9 +79,13 @@ impl Config {
             database_url,
             redis_url,
             voice_cleanup_delay_seconds,
+            archive_poll_interval_seconds,
+            archive_grace_period_days,
             command_input_channel_id,
             text_channel_category_id,
             voice_channel_category_id,
+            archived_channel_category_id,
+            text_channel_capacity,
         })
     }
 
@@ -77,6 +103,14 @@ impl Config {
                 Ok(None)
             }
         }
+    }
+
+    fn required_channel_id_from_env(name: &str, label: &str) -> Result<ChannelId> {
+        let Some(id) = Self::channel_id_from_env(name, label)? else {
+            return Err(anyhow!("Missing required {label} category id in {name}"));
+        };
+
+        Ok(id)
     }
 }
 
@@ -249,6 +283,12 @@ async fn main() -> Result<()> {
         data.insert::<StateKey>(state.clone());
     }
 
+    let http = client.http.clone();
+    let archive_state = state.clone();
+    let archive_handle = tokio::spawn(async move {
+        archive::run_archive_loop(http, archive_state).await;
+    });
+
     let shard_manager = client.shard_manager.clone();
     let client_future = tokio::spawn(async move {
         if let Err(err) = client.start().await {
@@ -258,6 +298,10 @@ async fn main() -> Result<()> {
 
     signal::ctrl_c().await?;
     shard_manager.shutdown_all().await;
+    archive_handle.abort();
+    if let Err(err) = archive_handle.await {
+        warn!("Archive task join error: {err:?}");
+    }
     if let Err(err) = client_future.await {
         error!("Client task join error: {err:?}");
     }
