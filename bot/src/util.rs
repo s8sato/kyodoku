@@ -291,10 +291,17 @@ async fn notify_watchers(
         .unwrap_or_else(|| format!("Session `{}`", isbn));
 
     let text_ch_id = state.store.get_text_channel_id(guild_id, &isbn).await?;
-    let content = format_dm_content(&entry, text_ch_id, voice_ch_id);
+    let content = format_dm_content(&entry, state.config.reading_session_activation_threshold);
 
     for watcher in watchers {
-        if let Err(err) = send_dm(&ctx.http, watcher, &content).await {
+        let dm_components = build_channel_buttons(
+            guild_id,
+            text_ch_id,
+            voice_ch_id,
+            Some(unwatch_custom_id(guild_id, &isbn)),
+        );
+
+        if let Err(err) = send_dm(&ctx.http, watcher, &content, dm_components).await {
             warn!(
                 "failed to send DM for reading session {} to {}: {err:?}",
                 isbn, watcher
@@ -305,18 +312,14 @@ async fn notify_watchers(
     Ok(())
 }
 
-fn format_dm_content(
-    entry: &str,
-    text_channel: Option<ChannelId>,
-    voice_channel: ChannelId,
-) -> String {
+fn format_dm_content(entry: &str, activation_threshold: usize) -> String {
     let mut content = format!("Reading session for {} is now active!\n", entry);
 
-    if let Some(text_channel) = text_channel {
-        content.push_str(&format!("Text channel: <#{}>\n", text_channel.get()));
+    if activation_threshold > 1 {
+        content.push_str(&format!("(Reached {activation_threshold} participants.)\n"));
     }
 
-    content.push_str(&format!("Voice channel: <#{}>", voice_channel.get()));
+    content.push_str("Use the buttons below to join the session.");
 
     content
 }
@@ -337,20 +340,74 @@ fn format_metadata_post(metadata: &IsbnMetadata) -> String {
     };
     content.push_str(&format!("{amazon_link}"));
 
-    content.push_str("\n\nこの本が開いたときに通知を受け取るには、下のボタンからウォッチリストに追加してください。");
+    content.push_str(
+        "\n\nこの本のセッションがアクティブになったとき（参加人数が一定に達したとき）に通知を受け取るには、下のボタンからウォッチリストに追加してください。",
+    );
 
     content
 }
 
-async fn send_dm(http: &serenity::http::Http, user_id: UserId, content: &str) -> Result<()> {
+async fn send_dm(
+    http: &serenity::http::Http,
+    user_id: UserId,
+    content: &str,
+    components: Vec<CreateActionRow>,
+) -> Result<()> {
     let channel = user_id.create_dm_channel(http).await?;
 
     channel
         .id
-        .send_message(http, CreateMessage::new().content(content))
+        .send_message(
+            http,
+            CreateMessage::new().content(content).components(components),
+        )
         .await?;
 
     Ok(())
+}
+
+pub fn build_channel_buttons(
+    guild_id: GuildId,
+    text_channel: Option<ChannelId>,
+    voice_channel: ChannelId,
+    remove_custom_id: Option<String>,
+) -> Vec<CreateActionRow> {
+    let mut buttons = vec![CreateButton::new_link(channel_url(guild_id, voice_channel))
+        .label("ボイスチャンネルに参加")];
+
+    if let Some(text_channel) = text_channel {
+        buttons.push(
+            CreateButton::new_link(channel_url(guild_id, text_channel))
+                .label("テキストチャンネルを開く"),
+        );
+    }
+
+    if let Some(custom_id) = remove_custom_id {
+        buttons.push(
+            CreateButton::new(custom_id)
+                .style(ButtonStyle::Danger)
+                .label("ウォッチリストから削除"),
+        );
+    }
+
+    vec![CreateActionRow::Buttons(buttons)]
+}
+
+fn channel_url(guild_id: GuildId, channel_id: ChannelId) -> String {
+    format!(
+        "https://discord.com/channels/{}/{}",
+        guild_id.get(),
+        channel_id.get()
+    )
+}
+
+fn unwatch_custom_id(guild_id: GuildId, isbn_13: &str) -> String {
+    format!(
+        "{}remove:{}:{}",
+        WATCH_ACTION_PREFIX,
+        guild_id.get(),
+        isbn_13
+    )
 }
 
 fn truncate_name(name: &str) -> String {

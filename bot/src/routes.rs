@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use serenity::all::{
-    ButtonStyle, CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
-    ComponentInteraction, Context as SerenityContext, CreateActionRow, CreateButton, CreateCommand,
+    CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
+    ComponentInteraction, Context as SerenityContext, CreateActionRow, CreateCommand,
     CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseFollowup,
-    CreateInteractionResponseMessage, InteractionResponseFlags, MessageFlags,
+    CreateInteractionResponseMessage, GuildId, InteractionResponseFlags, MessageFlags,
 };
 use tracing::debug;
 
@@ -141,13 +141,11 @@ async fn handle_open(
 
     Ok(InteractionReply {
         content: format!(
-            "Opened a reading session for **{}**(`{}`).\nText channel: <#{}>\nVoice channel: <#{}>",
+            "Opened a reading session for **{}**(`{}`). Use the buttons below to join.",
             display_title(&metadata.title, metadata.subtitle.as_deref(),),
             metadata.isbn_13,
-            text_ch_id,
-            voice_ch_id
         ),
-        ..Default::default()
+        components: util::build_channel_buttons(guild_id, Some(text_ch_id), voice_ch_id, None),
     })
 }
 
@@ -164,17 +162,23 @@ pub async fn handle_component_interaction(
         return Ok(());
     };
 
-    let Some((action, isbn_13)) = custom_id.split_once(':') else {
+    let mut parts = custom_id.split(':');
+    let Some(action) = parts.next() else {
         return Ok(());
     };
 
-    let guild_id = component
-        .guild_id
-        .context("Component interaction must be in a guild")?;
     let user_id = component.user.id;
 
     match action {
         "add" => {
+            let Some(isbn_13) = parts.next() else {
+                return Ok(());
+            };
+
+            let guild_id = component
+                .guild_id
+                .context("Component interaction must be in a guild")?;
+
             state.store.add_watch(guild_id, user_id, isbn_13).await?;
 
             let entry = match state.store.fetch_isbn(isbn_13).await? {
@@ -194,24 +198,56 @@ pub async fn handle_component_interaction(
                 .await?;
         }
         "remove" => {
+            let (guild_id, isbn_13, update_watchlist) = match (parts.next(), parts.next()) {
+                (Some(isbn_13), None) => (
+                    component
+                        .guild_id
+                        .context("Component interaction must be in a guild")?,
+                    isbn_13,
+                    true,
+                ),
+                (Some(guild_raw), Some(isbn_13)) => {
+                    let guild_id = component
+                        .guild_id
+                        .or_else(|| guild_raw.parse::<u64>().ok().map(GuildId::new))
+                        .context("Missing guild for watch remove action")?;
+
+                    (guild_id, isbn_13, false)
+                }
+                _ => return Ok(()),
+            };
+
             state.store.remove_watch(guild_id, user_id, isbn_13).await?;
 
-            let mut reply = build_watchlist_reply(&state, guild_id, user_id).await?;
-            reply.content = format!(
-                "Removed `{isbn_13}` from your watchlist.\n\n{}",
-                reply.content
-            );
+            if update_watchlist {
+                let mut reply = build_watchlist_reply(&state, guild_id, user_id).await?;
+                reply.content = format!(
+                    "Removed `{isbn_13}` from your watchlist.\n\n{}",
+                    reply.content
+                );
 
-            component
-                .create_response(
-                    ctx,
-                    CreateInteractionResponse::UpdateMessage(
-                        CreateInteractionResponseMessage::new()
-                            .content(reply.content)
-                            .components(reply.components),
-                    ),
-                )
-                .await?;
+                component
+                    .create_response(
+                        ctx,
+                        CreateInteractionResponse::UpdateMessage(
+                            CreateInteractionResponseMessage::new()
+                                .content(reply.content)
+                                .components(reply.components),
+                        ),
+                    )
+                    .await?;
+            } else {
+                let mut message = CreateInteractionResponseMessage::new()
+                    .content(format!("Removed `{isbn_13}` from your watchlist."));
+
+                if component.guild_id.is_some() {
+                    message = message.flags(InteractionResponseFlags::EPHEMERAL);
+                }
+
+                component
+                    .create_response(ctx, CreateInteractionResponse::Message(message))
+                    .await?;
+            }
         }
         _ => {
             component
@@ -378,7 +414,6 @@ async fn build_watchlist_reply(
     }
 
     let mut entries = Vec::new();
-    let mut buttons = Vec::new();
     for isbn_13 in watches {
         let entry = match state.store.fetch_isbn(&isbn_13).await? {
             Some(record) => {
@@ -388,20 +423,10 @@ async fn build_watchlist_reply(
         };
 
         entries.push(entry);
-        buttons.push(
-            CreateButton::new(format!("{}remove:{isbn_13}", util::WATCH_ACTION_PREFIX))
-                .style(ButtonStyle::Danger)
-                .label(format!("Remove {isbn_13}")),
-        );
-    }
-
-    let mut components = Vec::new();
-    for chunk in buttons.chunks(5) {
-        components.push(CreateActionRow::Buttons(chunk.to_vec()));
     }
 
     Ok(InteractionReply {
         content: format!("You are watching:\n{}", entries.join("\n")),
-        components,
+        components: Vec::new(),
     })
 }

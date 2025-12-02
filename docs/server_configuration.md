@@ -26,8 +26,8 @@ A place where people reading the same book can loosely connect.
 
 ## :eye_in_speech_bubble: Watchlist & Notifications
 ### `/watch list`
-- Shows your current watchlist  
-- When a watched book’s voice channel becomes active, you will receive a **DM notification**
+- Shows your current watchlist
+- When a watched book’s voice channel reaches the participant threshold and becomes active, you will receive a **DM notification**
 ### `/watch add <ISBN1> <ISBN2> ...`
 - Adds one or more books to your watchlist
 ### `/watch remove <ISBN1> <ISBN2> ...`
@@ -56,7 +56,7 @@ Right-click server name → **Privacy Settings → Allow DMs from other members 
 ## :eye_in_speech_bubble: ウォッチ機能
 ### `/watch list`
 - あなたのウォッチリストを表示します
-- ウォッチ中の本のボイスチャンネルが生成されると **DM 通知**が届きます
+- ウォッチ中の本のボイスチャンネルがアクティブ（参加者が一定人数に達したとき）になると **DM 通知**が届きます
 ### `/watch add <ISBN1> <ISBN2> ...`
 - ウォッチリストに本を追加します（複数指定可）
 ### `/watch remove <ISBN1> <ISBN2> ...`
