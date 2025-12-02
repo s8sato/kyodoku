@@ -1,5 +1,4 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, GuildId, UserId};
 use sqlx::{postgres::PgPoolOptions, FromRow, PgPool};
 
@@ -8,11 +7,6 @@ use crate::isbn::IsbnMetadata;
 #[derive(Clone)]
 pub struct Store {
     pool: PgPool,
-}
-
-pub struct ActiveVoiceSession {
-    pub channel_id: ChannelId,
-    pub started_at: DateTime<Utc>,
 }
 
 impl Store {
@@ -108,19 +102,16 @@ impl Store {
         &self,
         guild_id: GuildId,
         isbn_13: &str,
-    ) -> Result<Option<ActiveVoiceSession>> {
-        let record: Option<(i64, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT channel_id, started_at FROM voice_channels WHERE guild_id = $1 AND isbn_13 = $2 AND ended_at IS NULL",
+    ) -> Result<Option<ChannelId>> {
+        let record: Option<(i64,)> = sqlx::query_as(
+            "SELECT channel_id FROM voice_channels WHERE guild_id = $1 AND isbn_13 = $2 AND ended_at IS NULL",
         )
         .bind(guild_id.get() as i64)
         .bind(isbn_13)
         .fetch_optional(self.pool())
         .await?;
 
-        Ok(record.map(|(id, started_at)| ActiveVoiceSession {
-            channel_id: ChannelId::new(id as u64),
-            started_at,
-        }))
+        Ok(record.map(|(id,)| ChannelId::new(id as u64)))
     }
 
     pub async fn start_voice_session(
@@ -128,24 +119,23 @@ impl Store {
         guild_id: GuildId,
         channel_id: ChannelId,
         isbn_13: &str,
-    ) -> Result<DateTime<Utc>> {
-        let record: (DateTime<Utc>,) = sqlx::query_as(
+    ) -> Result<()> {
+        sqlx::query(
             "INSERT INTO voice_channels (guild_id, channel_id, isbn_13, started_at, ended_at)
              VALUES ($1, $2, $3, NOW(), NULL)
              ON CONFLICT (channel_id) DO UPDATE SET
                  guild_id = EXCLUDED.guild_id,
                  isbn_13 = EXCLUDED.isbn_13,
                  started_at = EXCLUDED.started_at,
-                 ended_at = NULL
-             RETURNING started_at",
+                 ended_at = NULL",
         )
         .bind(guild_id.get() as i64)
         .bind(channel_id.get() as i64)
         .bind(isbn_13)
-        .fetch_one(self.pool())
+        .execute(self.pool())
         .await?;
 
-        Ok(record.0)
+        Ok(())
     }
 
     pub async fn end_voice_session(&self, channel_id: ChannelId) -> Result<()> {
@@ -176,18 +166,15 @@ impl Store {
     pub async fn get_active_voice_session_by_channel(
         &self,
         channel_id: ChannelId,
-    ) -> Result<Option<ActiveVoiceSession>> {
-        let record: Option<(i64, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT channel_id, started_at FROM voice_channels WHERE channel_id = $1 AND ended_at IS NULL",
+    ) -> Result<Option<ChannelId>> {
+        let record: Option<(i64,)> = sqlx::query_as(
+            "SELECT channel_id FROM voice_channels WHERE channel_id = $1 AND ended_at IS NULL",
         )
         .bind(channel_id.get() as i64)
         .fetch_optional(self.pool())
         .await?;
 
-        Ok(record.map(|(channel_id, started_at)| ActiveVoiceSession {
-            channel_id: ChannelId::new(channel_id as u64),
-            started_at,
-        }))
+        Ok(record.map(|(channel_id,)| ChannelId::new(channel_id as u64)))
     }
 
     pub async fn add_watch(&self, guild_id: GuildId, user_id: UserId, isbn_13: &str) -> Result<()> {
