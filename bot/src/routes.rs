@@ -3,16 +3,22 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use serenity::all::{
-    CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
-    Context as SerenityContext, CreateCommand, CreateCommandOption, CreateInteractionResponse,
-    CreateInteractionResponseFollowup, CreateInteractionResponseMessage, InteractionResponseFlags,
-    MessageFlags,
+    ButtonStyle, CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
+    ComponentInteraction, Context as SerenityContext, CreateActionRow, CreateButton, CreateCommand,
+    CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseFollowup,
+    CreateInteractionResponseMessage, InteractionResponseFlags, MessageFlags,
 };
 use tracing::debug;
 
 use crate::isbn;
 use crate::util;
 use crate::BotState;
+
+#[derive(Default)]
+pub struct InteractionReply {
+    pub content: String,
+    pub components: Vec<CreateActionRow>,
+}
 
 pub async fn register_commands(http: &serenity::http::Http) -> Result<()> {
     let commands = vec![build_open_command(), build_watch_command()];
@@ -40,11 +46,14 @@ pub async fn handle_interaction(
         other => Err(anyhow!("Unknown command: {other}")),
     };
 
-    let content = match response {
+    let reply = match response {
         Ok(message) => message,
         Err(err) => {
             debug!("command failed: {err:?}");
-            format!("❌ {err}")
+            InteractionReply {
+                content: format!("❌ {err}"),
+                ..Default::default()
+            }
         }
     };
 
@@ -52,7 +61,8 @@ pub async fn handle_interaction(
         .create_followup(
             &ctx.http,
             CreateInteractionResponseFollowup::new()
-                .content(content)
+                .content(reply.content)
+                .components(reply.components)
                 .flags(MessageFlags::EPHEMERAL),
         )
         .await?;
@@ -113,7 +123,7 @@ async fn handle_open(
     ctx: &SerenityContext,
     command: &CommandInteraction,
     state: Arc<BotState>,
-) -> Result<String> {
+) -> Result<InteractionReply> {
     let guild_id = command
         .guild_id
         .context("Command must be used within a guild")?;
@@ -129,23 +139,102 @@ async fn handle_open(
     let voice_ch_id =
         util::ensure_isbn_voice_channel(ctx, guild_id, &metadata, state.clone()).await?;
 
-    Ok(format!(
-        "Opened a reading session for **{}**(`{}`).\nText channel: <#{}>\nVoice channel: <#{}>",
-        display_title(
-            &metadata.title,
-            metadata.subtitle.as_deref(),
+    Ok(InteractionReply {
+        content: format!(
+            "Opened a reading session for **{}**(`{}`).\nText channel: <#{}>\nVoice channel: <#{}>",
+            display_title(&metadata.title, metadata.subtitle.as_deref(),),
+            metadata.isbn_13,
+            text_ch_id,
+            voice_ch_id
         ),
-        metadata.isbn_13,
-        text_ch_id,
-        voice_ch_id
-    ))
+        ..Default::default()
+    })
+}
+
+pub async fn handle_component_interaction(
+    ctx: &SerenityContext,
+    component: &ComponentInteraction,
+    state: Arc<BotState>,
+) -> Result<()> {
+    let Some(custom_id) = component
+        .data
+        .custom_id
+        .strip_prefix(util::WATCH_ACTION_PREFIX)
+    else {
+        return Ok(());
+    };
+
+    let Some((action, isbn_13)) = custom_id.split_once(':') else {
+        return Ok(());
+    };
+
+    let guild_id = component
+        .guild_id
+        .context("Component interaction must be in a guild")?;
+    let user_id = component.user.id;
+
+    match action {
+        "add" => {
+            state.store.add_watch(guild_id, user_id, isbn_13).await?;
+
+            let entry = match state.store.fetch_isbn(isbn_13).await? {
+                Some(record) => format_entry(&record.title, record.subtitle.as_deref(), isbn_13),
+                None => format_entry(isbn_13, None, isbn_13),
+            };
+
+            component
+                .create_response(
+                    ctx,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content(format!("Added to your watchlist:\n{entry}"))
+                            .flags(InteractionResponseFlags::EPHEMERAL),
+                    ),
+                )
+                .await?;
+        }
+        "remove" => {
+            state.store.remove_watch(guild_id, user_id, isbn_13).await?;
+
+            let mut reply = build_watchlist_reply(&state, guild_id, user_id).await?;
+            reply.content = format!(
+                "Removed `{isbn_13}` from your watchlist.\n\n{}",
+                reply.content
+            );
+
+            component
+                .create_response(
+                    ctx,
+                    CreateInteractionResponse::UpdateMessage(
+                        CreateInteractionResponseMessage::new()
+                            .content(reply.content)
+                            .components(reply.components),
+                    ),
+                )
+                .await?;
+        }
+        _ => {
+            component
+                .create_response(
+                    ctx,
+                    CreateInteractionResponse::Message(
+                        CreateInteractionResponseMessage::new()
+                            .content("Unsupported watch action.")
+                            .flags(InteractionResponseFlags::EPHEMERAL),
+                    ),
+                )
+                .await?;
+        }
+    }
+
+    Ok(())
 }
 
 async fn handle_watch(
     _ctx: &SerenityContext,
     command: &CommandInteraction,
     state: Arc<BotState>,
-) -> Result<String> {
+) -> Result<InteractionReply> {
     let guild_id = command
         .guild_id
         .context("Command must be used within a guild")?;
@@ -188,9 +277,15 @@ async fn handle_watch(
             }
 
             if added.is_empty() {
-                Ok("No new ISBNs added to your watchlist.".to_string())
+                Ok(InteractionReply {
+                    content: "No new ISBNs added to your watchlist.".to_string(),
+                    ..Default::default()
+                })
             } else {
-                Ok(format!("Added to your watchlist:\n{}", added.join("\n")))
+                Ok(InteractionReply {
+                    content: format!("Added to your watchlist:\n{}", added.join("\n")),
+                    ..Default::default()
+                })
             }
         }
         "remove" => {
@@ -223,34 +318,18 @@ async fn handle_watch(
                 removed.push(entry);
             }
 
-            if removed.is_empty() {
-                Ok("No ISBNs removed from your watchlist.".to_string())
+            let content = if removed.is_empty() {
+                "No ISBNs removed from your watchlist.".to_string()
             } else {
-                Ok(format!(
-                    "Removed from your watchlist:\n{}",
-                    removed.join("\n")
-                ))
-            }
-        }
-        "list" => {
-            let watches = state.store.list_watches(guild_id, user_id).await?;
-            if watches.is_empty() {
-                Ok("Your watchlist is empty.".to_string())
-            } else {
-                let mut entries = Vec::new();
-                for isbn_13 in watches {
-                    let entry = match state.store.fetch_isbn(&isbn_13).await? {
-                        Some(record) => {
-                            format_entry(&record.title, record.subtitle.as_deref(), &record.isbn_13)
-                        }
-                        None => format_entry(&isbn_13, None, &isbn_13),
-                    };
-                    entries.push(entry);
-                }
+                format!("Removed from your watchlist:\n{}", removed.join("\n"))
+            };
 
-                Ok(format!("You are watching:\n{}", entries.join("\n")))
-            }
+            Ok(InteractionReply {
+                content,
+                ..Default::default()
+            })
         }
+        "list" => build_watchlist_reply(&state, guild_id, user_id).await,
         other => Err(anyhow!("Unknown watch action: {other}")),
     }
 }
@@ -283,4 +362,46 @@ fn display_title(title: &str, subtitle: Option<&str>) -> String {
 
 fn format_entry(title: &str, subtitle: Option<&str>, isbn_13: &str) -> String {
     format!("- `{}` **{}**", isbn_13, display_title(title, subtitle))
+}
+
+async fn build_watchlist_reply(
+    state: &BotState,
+    guild_id: serenity::model::id::GuildId,
+    user_id: serenity::model::id::UserId,
+) -> Result<InteractionReply> {
+    let watches = state.store.list_watches(guild_id, user_id).await?;
+    if watches.is_empty() {
+        return Ok(InteractionReply {
+            content: "Your watchlist is empty.".to_string(),
+            ..Default::default()
+        });
+    }
+
+    let mut entries = Vec::new();
+    let mut buttons = Vec::new();
+    for isbn_13 in watches {
+        let entry = match state.store.fetch_isbn(&isbn_13).await? {
+            Some(record) => {
+                format_entry(&record.title, record.subtitle.as_deref(), &record.isbn_13)
+            }
+            None => format_entry(&isbn_13, None, &isbn_13),
+        };
+
+        entries.push(entry);
+        buttons.push(
+            CreateButton::new(format!("{}remove:{isbn_13}", util::WATCH_ACTION_PREFIX))
+                .style(ButtonStyle::Danger)
+                .label(format!("Remove {isbn_13}")),
+        );
+    }
+
+    let mut components = Vec::new();
+    for chunk in buttons.chunks(5) {
+        components.push(CreateActionRow::Buttons(chunk.to_vec()));
+    }
+
+    Ok(InteractionReply {
+        content: format!("You are watching:\n{}", entries.join("\n")),
+        components,
+    })
 }

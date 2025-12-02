@@ -4,7 +4,8 @@ use std::time::Duration;
 use anyhow::Result;
 use redis::AsyncCommands;
 use serenity::all::{
-    ChannelId, ChannelType, Context, CreateChannel, CreateMessage, EditChannel, GuildId, UserId,
+    ButtonStyle, ChannelId, ChannelType, Context, CreateActionRow, CreateButton, CreateChannel,
+    CreateMessage, EditChannel, GuildId, UserId,
 };
 use tokio::time::sleep;
 use tracing::{error, info, warn};
@@ -12,6 +13,7 @@ use tracing::{error, info, warn};
 use crate::isbn::IsbnMetadata;
 use crate::BotState;
 
+pub const WATCH_ACTION_PREFIX: &str = "watch:";
 const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
 const ACTIVATION_TTL_SECONDS: i64 = 600;
 
@@ -62,11 +64,20 @@ pub async fn ensure_isbn_text_channel(
     }
     let channel = guild_id.create_channel(&ctx.http, channel).await?;
 
+    let components = vec![CreateActionRow::Buttons(vec![CreateButton::new(format!(
+        "{WATCH_ACTION_PREFIX}add:{}",
+        metadata.isbn_13
+    ))
+    .style(ButtonStyle::Primary)
+    .label("ウォッチリストに追加")])];
+
     channel
         .id
         .send_message(
             &ctx.http,
-            CreateMessage::new().content(format_metadata_post(metadata)),
+            CreateMessage::new()
+                .content(format_metadata_post(metadata))
+                .components(components),
         )
         .await?;
 
@@ -325,6 +336,8 @@ fn format_metadata_post(metadata: &IsbnMetadata) -> String {
         format!("https://www.amazon.co.jp/s?k={}", metadata.isbn_13)
     };
     content.push_str(&format!("{amazon_link}"));
+
+    content.push_str("\n\nこの本が開いたときに通知を受け取るには、下のボタンからウォッチリストに追加してください。");
 
     content
 }
