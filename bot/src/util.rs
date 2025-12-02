@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use async_trait::async_trait;
 use redis::AsyncCommands;
 use serenity::all::{
     ButtonStyle, ChannelId, ChannelType, Context, CreateActionRow, CreateButton, CreateChannel,
@@ -15,7 +16,6 @@ use crate::BotState;
 
 pub const WATCH_ACTION_PREFIX: &str = "watch:";
 const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
-const ACTIVATION_TTL_SECONDS: i64 = 600;
 const READING_SESSION_ACTIVATION_THRESHOLD: usize = 1;
 
 pub async fn ensure_isbn_text_channel(
@@ -114,7 +114,7 @@ pub async fn ensure_isbn_voice_channel(
 
     if let Some(channel_id) = state
         .store
-        .get_active_voice_channel(guild_id, &metadata.isbn_13)
+        .get_active_voice_session(guild_id, &metadata.isbn_13)
         .await?
     {
         if let Ok(channel) = ctx.http.get_channel(channel_id).await {
@@ -230,6 +230,7 @@ async fn finalize_cleanup(
     state.store.end_voice_session(channel_id).await?;
 
     let mut conn = state.redis.get_async_connection().await?;
+    clear_activation_flag(&mut conn, channel_id).await;
     let _: redis::RedisResult<i32> = conn.del(&key).await;
     Ok(())
 }
@@ -261,6 +262,43 @@ fn current_voice_members(ctx: &Context, guild_id: GuildId, channel_id: ChannelId
     }
 }
 
+#[async_trait]
+trait ActivationCache {
+    async fn record_if_new(&mut self, key: &str) -> Result<bool>;
+
+    async fn clear(&mut self, key: &str);
+}
+
+#[async_trait]
+impl ActivationCache for redis::aio::Connection {
+    async fn record_if_new(&mut self, key: &str) -> Result<bool> {
+        let inserted: bool = self.set_nx(key, 1).await?;
+        Ok(inserted)
+    }
+
+    async fn clear(&mut self, key: &str) {
+        let _: redis::RedisResult<i32> = self.del(key).await;
+    }
+}
+
+fn activation_cache_key(channel_id: ChannelId) -> String {
+    format!("voice:active:{}", channel_id.get())
+}
+
+async fn record_activation_if_new(
+    cache: &mut impl ActivationCache,
+    channel_id: ChannelId,
+) -> Result<(bool, String)> {
+    let key = activation_cache_key(channel_id);
+    let inserted: bool = cache.record_if_new(&key).await?;
+    Ok((inserted, key))
+}
+
+async fn clear_activation_flag(cache: &mut impl ActivationCache, channel_id: ChannelId) {
+    let key = activation_cache_key(channel_id);
+    cache.clear(&key).await;
+}
+
 async fn maybe_notify_activation(
     ctx: Context,
     state: Arc<BotState>,
@@ -273,13 +311,20 @@ async fn maybe_notify_activation(
         return Ok(());
     }
 
+    if state
+        .store
+        .get_active_voice_session_by_channel(channel_id)
+        .await?
+        .is_none()
+    {
+        return Ok(());
+    }
+
     let mut conn = state.redis.get_async_connection().await?;
-    let key = format!("voice:active:{}", channel_id.get());
-    let inserted: bool = conn.set_nx(&key, 1).await?;
+    let (inserted, activation_key) = record_activation_if_new(&mut conn, channel_id).await?;
     if !inserted {
         return Ok(());
     }
-    let _: bool = conn.expire(&key, ACTIVATION_TTL_SECONDS).await?;
 
     let notify_result = notify_watchers(&ctx, &state, guild_id, channel_id).await;
     if let Err(err) = notify_result {
@@ -287,7 +332,7 @@ async fn maybe_notify_activation(
             "failed to notify watchers for channel {}: {err:?}",
             channel_id
         );
-        if let Err(del_err) = conn.del::<_, i32>(&key).await {
+        if let Err(del_err) = conn.del::<_, i32>(&activation_key).await {
             warn!(
                 "failed to reset activation flag for {}: {del_err:?}",
                 channel_id
@@ -464,7 +509,14 @@ fn truncate_name(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::truncate_name;
+    use super::{
+        clear_activation_flag, record_activation_if_new, truncate_name, ActivationCache,
+        READING_SESSION_ACTIVATION_THRESHOLD,
+    };
+    use anyhow::Result;
+    use async_trait::async_trait;
+    use serenity::all::ChannelId;
+    use std::collections::HashSet;
 
     #[test]
     fn truncate_name_preserves_ascii_boundaries() {
@@ -485,5 +537,46 @@ mod tests {
         assert!(truncated.len() < name.len());
         assert!(truncated.starts_with(&"本".repeat(29)));
         assert_eq!(truncated.chars().last(), Some('…'));
+    }
+
+    #[tokio::test]
+    async fn activation_flags_persist_until_cleared() {
+        let mut cache = MockActivationCache::default();
+
+        let channel_id = ChannelId::new(READING_SESSION_ACTIVATION_THRESHOLD as u64);
+        let (first_inserted, first_key) = record_activation_if_new(&mut cache, channel_id)
+            .await
+            .expect("first activation");
+        assert!(first_inserted);
+
+        let (second_inserted, second_key) = record_activation_if_new(&mut cache, channel_id)
+            .await
+            .expect("repeat activation");
+        assert!(!second_inserted);
+        assert_eq!(first_key, second_key);
+
+        clear_activation_flag(&mut cache, channel_id).await;
+
+        let (new_session_inserted, new_key) = record_activation_if_new(&mut cache, channel_id)
+            .await
+            .expect("activation after clearing");
+        assert!(new_session_inserted);
+        assert_eq!(first_key, new_key);
+    }
+
+    #[derive(Default)]
+    struct MockActivationCache {
+        keys: HashSet<String>,
+    }
+
+    #[async_trait]
+    impl ActivationCache for MockActivationCache {
+        async fn record_if_new(&mut self, key: &str) -> Result<bool> {
+            Ok(self.keys.insert(key.to_string()))
+        }
+
+        async fn clear(&mut self, key: &str) {
+            self.keys.remove(key);
+        }
     }
 }
