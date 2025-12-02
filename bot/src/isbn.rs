@@ -163,9 +163,13 @@ fn is_valid_isbn10(isbn: &str) -> bool {
 }
 
 fn is_valid_isbn13(isbn: &str) -> bool {
-    if isbn.len() != 13 || !isbn.chars().all(|c| c.is_ascii_digit()) {
+    if isbn.len() != 13
+        || ["978", "979"].iter().all(|pre| **pre != isbn[..3])
+        || isbn.chars().any(|c| !c.is_ascii_digit())
+    {
         return false;
     }
+
     let check = compute_isbn13_check_digit(isbn[..12].as_bytes());
     match isbn.chars().last().and_then(|c| c.to_digit(10)) {
         Some(last) => check == last,
