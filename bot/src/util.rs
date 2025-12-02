@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use redis::AsyncCommands;
-use serde_json::json;
 use serenity::all::{
     ButtonStyle, ChannelId, ChannelType, Context, CreateActionRow, CreateButton, CreateChannel,
     CreateMessage, EditChannel, GuildId, UserId,
@@ -29,8 +28,6 @@ pub async fn ensure_isbn_text_channel(
     let desired_name = truncate_name(&channel_name);
     let desired_topic = format!("Discussion channel for {}", metadata.display_title());
 
-    let category_id = state.config.text_channel_category_id;
-
     if let Some(channel_id) = state
         .store
         .get_text_channel_id(guild_id, &metadata.isbn_13)
@@ -51,20 +48,17 @@ pub async fn ensure_isbn_text_channel(
                     needs_update = true;
                 }
 
-                if let Some(category_id) = category_id {
+                if let Some(category_id) = state.config.text_channel_category_id {
                     if guild_channel.parent_id != Some(category_id) {
                         edits = edits.category(category_id);
-                        needs_update = true;
                     }
+
+                    edits = edits.position(0);
+                    needs_update = true;
                 }
 
                 if needs_update {
                     guild_channel.id.edit(&ctx.http, edits).await?;
-                }
-
-                if let Some(category_id) = category_id {
-                    move_channel_to_category_top(ctx, guild_id, guild_channel.id, category_id)
-                        .await?;
                 }
 
                 return Ok(guild_channel.id);
@@ -80,8 +74,8 @@ pub async fn ensure_isbn_text_channel(
     }
     let channel = guild_id.create_channel(&ctx.http, channel).await?;
 
-    if let Some(category_id) = category_id {
-        move_channel_to_category_top(ctx, guild_id, channel.id, category_id).await?;
+    if let Some(category_id) = state.config.text_channel_category_id {
+        move_channel_to_category_top(ctx, channel.id, category_id).await?;
     }
 
     let components = vec![CreateActionRow::Buttons(vec![CreateButton::new(format!(
@@ -118,8 +112,6 @@ pub async fn ensure_isbn_voice_channel(
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let desired_name = truncate_name(&channel_name);
 
-    let category_id = state.config.voice_channel_category_id;
-
     if let Some(channel_id) = state
         .store
         .get_active_voice_channel(guild_id, &metadata.isbn_13)
@@ -135,20 +127,17 @@ pub async fn ensure_isbn_voice_channel(
                     needs_update = true;
                 }
 
-                if let Some(category_id) = category_id {
+                if let Some(category_id) = state.config.voice_channel_category_id {
                     if guild_channel.parent_id != Some(category_id) {
                         edits = edits.category(category_id);
-                        needs_update = true;
                     }
+
+                    edits = edits.position(0);
+                    needs_update = true;
                 }
 
                 if needs_update {
                     guild_channel.id.edit(&ctx.http, edits).await?;
-                }
-
-                if let Some(category_id) = category_id {
-                    move_channel_to_category_top(ctx, guild_id, guild_channel.id, category_id)
-                        .await?;
                 }
 
                 return Ok(guild_channel.id);
@@ -162,8 +151,8 @@ pub async fn ensure_isbn_voice_channel(
     }
     let voice = guild_id.create_channel(&ctx.http, voice).await?;
 
-    if let Some(category_id) = category_id {
-        move_channel_to_category_top(ctx, guild_id, voice.id, category_id).await?;
+    if let Some(category_id) = state.config.voice_channel_category_id {
+        move_channel_to_category_top(ctx, voice.id, category_id).await?;
     }
 
     state
@@ -247,14 +236,14 @@ async fn finalize_cleanup(
 
 async fn move_channel_to_category_top(
     ctx: &Context,
-    guild_id: GuildId,
     channel_id: ChannelId,
     category_id: ChannelId,
 ) -> Result<()> {
-    let payload = json!([{ "id": channel_id, "parent_id": category_id, "position": 0 }]);
-
-    ctx.http
-        .edit_guild_channel_positions(guild_id, &payload)
+    channel_id
+        .edit(
+            &ctx.http,
+            EditChannel::new().category(category_id).position(0),
+        )
         .await?;
 
     Ok(())
