@@ -291,11 +291,32 @@ async fn handle_watch(
 
             let mut added = Vec::new();
             let mut seen = HashSet::new();
+            let mut existing_watches: HashSet<String> = state
+                .store
+                .list_watches(guild_id, user_id)
+                .await?
+                .into_iter()
+                .collect();
+            let mut remaining_slots = state
+                .config
+                .watchlist_limit
+                .saturating_sub(existing_watches.len());
 
             for code in codes {
                 let normalized = isbn::normalize(code)?;
                 if !seen.insert(normalized.isbn_13.clone()) {
                     continue;
+                }
+
+                if existing_watches.contains(&normalized.isbn_13) {
+                    continue;
+                }
+
+                if remaining_slots == 0 {
+                    return Err(anyhow!(format!(
+                        "ウォッチリスト登録数が上限（{}冊）に達しました",
+                        state.config.watchlist_limit
+                    )));
                 }
 
                 let metadata = isbn::lookup_metadata(&state.http_client, &normalized).await?;
@@ -304,6 +325,9 @@ async fn handle_watch(
                     .store
                     .add_watch(guild_id, user_id, &metadata.isbn_13)
                     .await?;
+
+                existing_watches.insert(metadata.isbn_13.clone());
+                remaining_slots = remaining_slots.saturating_sub(1);
 
                 added.push(format_entry(
                     &metadata.title,
