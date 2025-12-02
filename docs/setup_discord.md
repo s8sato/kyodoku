@@ -8,6 +8,7 @@ This guide walks through preparing credentials, configuring the bot container, a
 3. Copy the **Application ID** from the **General Information** page. You will paste it into the `.env` file later as `APPLICATION_ID`.
 4. In the left sidebar, navigate to **Bot** → **Add Bot**, then confirm by selecting **Yes, do it!**. The portal creates a bot user for the application.
 5. Under the bot settings, click **Reset Token** and then **Copy** to reveal the **Bot Token**. Save it temporarily—you will need it for the `.env` file as `DISCORD_TOKEN`.
+6. In the same bot settings page, disable the **Public Bot** toggle to keep invitations limited to your own OAuth2 links.
 
 > ⚠️ Treat the bot token like a password. Do not commit it to version control or share it publicly. If it leaks, return to this page and regenerate a new token.
 
@@ -17,8 +18,6 @@ This guide walks through preparing credentials, configuring the bot container, a
 3. Fill in the required variables:
    - `DISCORD_TOKEN=` — paste the bot token from step 1.
    - `APPLICATION_ID=` — paste the application ID from step 1.
-   - `ALLOWED_GUILD_IDS=` — a comma-separated list of Discord server IDs where the bot is allowed to stay. The bot will immediately leave any guild not listed here. If you leave this empty, the bot will exit every guild, including ones you invite it to.
-     - To copy a server ID, enable **Developer Mode** in Discord user settings → **Advanced**, then right-click the server name in the sidebar and choose **Copy Server ID**.
    - `COMMAND_INPUT_CHANNEL_ID=` — optional. When set, the bot deletes any non-command messages from non-admin users in this channel to keep the command intake space clean.
    - `TEXT_CHANNEL_CATEGORY_ID=` — optional. When set, new ISBN text channels are created inside this category.
    - `VOICE_CHANNEL_CATEGORY_ID=` — optional. When set, ISBN voice channels are created inside this category.

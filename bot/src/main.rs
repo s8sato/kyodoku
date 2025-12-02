@@ -3,7 +3,6 @@ mod routes;
 mod store;
 mod util;
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -11,8 +10,8 @@ use async_trait::async_trait;
 use dotenvy::dotenv;
 use redis::Client as RedisClient;
 use serenity::all::{
-    ApplicationId, ChannelId, Client, Context, GatewayIntents, GuildId, Interaction, Message,
-    MessageType, Ready, VoiceState,
+    ApplicationId, ChannelId, Client, Context, GatewayIntents, Interaction, Message, MessageType,
+    Ready, VoiceState,
 };
 use serenity::prelude::TypeMapKey;
 use songbird::SerenityInit;
@@ -32,7 +31,6 @@ pub struct Config {
     pub command_input_channel_id: Option<ChannelId>,
     pub text_channel_category_id: Option<ChannelId>,
     pub voice_channel_category_id: Option<ChannelId>,
-    pub allowed_guilds: HashSet<GuildId>,
 }
 
 impl Config {
@@ -52,23 +50,6 @@ impl Config {
             Self::channel_id_from_env("TEXT_CHANNEL_CATEGORY_ID", "text")?;
         let voice_channel_category_id =
             Self::channel_id_from_env("VOICE_CHANNEL_CATEGORY_ID", "voice")?;
-        let allowed_guilds = std::env::var("ALLOWED_GUILD_IDS")
-            .unwrap_or_default()
-            .split(|ch: char| ch == ',' || ch.is_whitespace())
-            .filter_map(|raw| {
-                if raw.is_empty() {
-                    return None;
-                }
-
-                match raw.parse::<u64>() {
-                    Ok(id) => Some(GuildId::new(id)),
-                    Err(err) => {
-                        warn!("Ignoring invalid guild id '{raw}': {err:?}");
-                        None
-                    }
-                }
-            })
-            .collect();
 
         Ok(Self {
             discord_token,
@@ -79,7 +60,6 @@ impl Config {
             command_input_channel_id,
             text_channel_category_id,
             voice_channel_category_id,
-            allowed_guilds,
         })
     }
 
@@ -97,10 +77,6 @@ impl Config {
                 Ok(None)
             }
         }
-    }
-
-    pub fn is_guild_allowed(&self, guild_id: GuildId) -> bool {
-        self.allowed_guilds.contains(&guild_id)
     }
 }
 
@@ -125,34 +101,12 @@ impl Handler {
         let data = ctx.data.read().await;
         data.get::<StateKey>().cloned()
     }
-
-    async fn enforce_guild_allowlist(ctx: &Context, state: &BotState, guild_id: GuildId) -> bool {
-        if state.config.is_guild_allowed(guild_id) {
-            return true;
-        }
-
-        info!("Leaving unauthorized guild {}", guild_id);
-        if let Err(err) = guild_id.leave(&ctx.http).await {
-            error!("failed to leave guild {}: {err:?}", guild_id);
-        }
-
-        false
-    }
 }
 
 #[async_trait]
 impl serenity::prelude::EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("Logged in as {}", ready.user.name);
-        let Some(state) = Handler::state(&ctx).await else {
-            error!("Bot state missing from context");
-            return;
-        };
-
-        for guild in &ready.guilds {
-            Handler::enforce_guild_allowlist(&ctx, &state, guild.id).await;
-        }
-
         if let Err(err) = routes::register_commands(&ctx.http).await {
             error!("failed to register commands: {err:?}");
         }
@@ -165,22 +119,10 @@ impl serenity::prelude::EventHandler for Handler {
         };
 
         if let Some(command) = interaction.as_command() {
-            if let Some(guild_id) = command.guild_id {
-                if !Handler::enforce_guild_allowlist(&ctx, &state, guild_id).await {
-                    return;
-                }
-            }
-
             if let Err(err) = routes::handle_interaction(&ctx, command, state).await {
                 error!("failed to handle command: {err:?}");
             }
         } else if let Some(component) = interaction.as_message_component() {
-            if let Some(guild_id) = component.guild_id {
-                if !Handler::enforce_guild_allowlist(&ctx, &state, guild_id).await {
-                    return;
-                }
-            }
-
             if let Err(err) = routes::handle_component_interaction(&ctx, component, state).await {
                 error!("failed to handle component: {err:?}");
             }
@@ -199,12 +141,6 @@ impl serenity::prelude::EventHandler for Handler {
 
         if message.channel_id != channel_id {
             return;
-        }
-
-        if let Some(guild_id) = message.guild_id {
-            if !Handler::enforce_guild_allowlist(&ctx, &state, guild_id).await {
-                return;
-            }
         }
 
         if message.author.bot || message.webhook_id.is_some() {
@@ -264,10 +200,6 @@ impl serenity::prelude::EventHandler for Handler {
             return;
         };
 
-        if !Handler::enforce_guild_allowlist(&ctx, &state, guild_id).await {
-            return;
-        }
-
         let old_channel = old.and_then(|v| v.channel_id);
         let new_channel = new.channel_id;
 
@@ -277,20 +209,6 @@ impl serenity::prelude::EventHandler for Handler {
         {
             error!("voice state handling failed: {err:?}");
         }
-    }
-
-    async fn guild_create(
-        &self,
-        ctx: Context,
-        guild: serenity::model::guild::Guild,
-        _: Option<bool>,
-    ) {
-        let Some(state) = Handler::state(&ctx).await else {
-            error!("Bot state missing from context");
-            return;
-        };
-
-        Handler::enforce_guild_allowlist(&ctx, &state, guild.id).await;
     }
 }
 
