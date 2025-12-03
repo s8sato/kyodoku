@@ -179,6 +179,46 @@ pub async fn handle_component_interaction(
                 .guild_id
                 .context("Component interaction must be in a guild")?;
 
+            let existing_watches: HashSet<String> = state
+                .store
+                .list_watches(guild_id, user_id)
+                .await?
+                .into_iter()
+                .collect();
+
+            if existing_watches.contains(isbn_13) {
+                component
+                    .create_response(
+                        ctx,
+                        CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content("This book is already in your watchlist.")
+                                .flags(InteractionResponseFlags::EPHEMERAL),
+                        ),
+                    )
+                    .await?;
+
+                return Ok(());
+            }
+
+            if existing_watches.len() >= state.config.watchlist_limit {
+                component
+                    .create_response(
+                        ctx,
+                        CreateInteractionResponse::Message(
+                            CreateInteractionResponseMessage::new()
+                                .content(format!(
+                                    "❌ You’ve reached the watchlist limit ({} books).",
+                                    state.config.watchlist_limit
+                                ))
+                                .flags(InteractionResponseFlags::EPHEMERAL),
+                        ),
+                    )
+                    .await?;
+
+                return Ok(());
+            }
+
             state.store.add_watch(guild_id, user_id, isbn_13).await?;
 
             let entry = match state.store.fetch_isbn(isbn_13).await? {
