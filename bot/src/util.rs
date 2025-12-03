@@ -48,6 +48,9 @@ pub async fn ensure_isbn_text_channel(
                     needs_update = true;
                 }
 
+                let was_archived =
+                    guild_channel.parent_id == Some(state.config.archived_channel_category_id);
+
                 if guild_channel.parent_id != Some(state.config.text_channel_category_id) {
                     edits = edits.category(state.config.text_channel_category_id);
                     needs_update = true;
@@ -59,6 +62,10 @@ pub async fn ensure_isbn_text_channel(
 
                 move_channel_to_top(ctx, guild_channel.id, state.config.text_channel_category_id)
                     .await?;
+
+                if was_archived {
+                    state.store.clear_archived_channel(guild_channel.id).await?;
+                }
 
                 return Ok(guild_channel.id);
             }
