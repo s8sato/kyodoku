@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, GuildId, UserId};
 use sqlx::{postgres::PgPoolOptions, FromRow, PgPool};
 
@@ -23,6 +24,60 @@ impl Store {
 
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    pub async fn get_archived_channel(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Option<DbArchivedChannel>> {
+        let record = sqlx::query_as::<_, DbArchivedChannel>(
+            "SELECT channel_id, guild_id, original_category_id, archived_at, expires_at
+             FROM archived_channels
+             WHERE channel_id = $1",
+        )
+        .bind(channel_id.get() as i64)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(record)
+    }
+
+    pub async fn upsert_archived_channel(
+        &self,
+        guild_id: GuildId,
+        channel_id: ChannelId,
+        original_category_id: ChannelId,
+        archived_at: DateTime<Utc>,
+        expires_at: DateTime<Utc>,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO archived_channels (channel_id, guild_id, original_category_id, archived_at, expires_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+             ON CONFLICT (channel_id) DO UPDATE SET
+                 guild_id = EXCLUDED.guild_id,
+                 original_category_id = EXCLUDED.original_category_id,
+                 archived_at = EXCLUDED.archived_at,
+                 expires_at = EXCLUDED.expires_at,
+                 updated_at = NOW()",
+        )
+        .bind(channel_id.get() as i64)
+        .bind(guild_id.get() as i64)
+        .bind(original_category_id.get() as i64)
+        .bind(archived_at)
+        .bind(expires_at)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn clear_archived_channel(&self, channel_id: ChannelId) -> Result<()> {
+        sqlx::query("DELETE FROM archived_channels WHERE channel_id = $1")
+            .bind(channel_id.get() as i64)
+            .execute(self.pool())
+            .await?;
+
+        Ok(())
     }
 
     pub async fn upsert_isbn(&self, metadata: &IsbnMetadata) -> Result<()> {
@@ -260,4 +315,13 @@ pub struct DbIsbn {
     pub subtitle: Option<String>,
     pub authors: Vec<String>,
     pub source: String,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct DbArchivedChannel {
+    pub channel_id: i64,
+    pub guild_id: i64,
+    pub original_category_id: i64,
+    pub archived_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
 }
