@@ -1,5 +1,6 @@
 mod archive;
 mod isbn;
+mod landing;
 mod routes;
 mod store;
 mod util;
@@ -150,6 +151,15 @@ impl serenity::prelude::EventHandler for Handler {
         info!("Logged in as {}", ready.user.name);
         if let Err(err) = routes::register_commands(&ctx.http).await {
             error!("failed to register commands: {err:?}");
+        }
+
+        let Some(state) = Handler::state(&ctx).await else {
+            error!("Bot state missing from context");
+            return;
+        };
+
+        if let Err(err) = landing::refresh_landing_posts(&ctx, &state.config, ready.user.id).await {
+            warn!("failed to refresh landing posts: {err:?}");
         }
     }
 
