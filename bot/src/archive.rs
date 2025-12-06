@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeDelta, Utc};
@@ -9,8 +9,6 @@ use tracing::{error, info, warn};
 
 use crate::store::DbArchivedChannel;
 use crate::BotState;
-
-const ARCHIVE_MARKER_PREFIX: &str = "[archived_at:";
 
 pub async fn run_archive_loop(http: Arc<Http>, state: Arc<BotState>) {
     let poll_interval = Duration::from_secs(state.config.archive_poll_interval_seconds);
@@ -163,9 +161,7 @@ async fn ensure_archived_record(
         return Ok(record);
     }
 
-    let archived_at =
-        parse_archived_at(channel.topic.as_deref()).unwrap_or_else(|| SystemTime::now());
-    let archived_at: DateTime<Utc> = archived_at.into();
+    let archived_at: DateTime<Utc> = SystemTime::now().into();
     let grace_delta = archive_grace_delta(archive_grace);
     let expires_at = archived_at + grace_delta;
 
@@ -188,17 +184,12 @@ async fn ensure_archived_record(
 }
 
 pub fn format_archive_topic(archived_at: SystemTime, archive_grace: Duration) -> String {
-    let archived_at_secs = archived_at
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
     let archived_dt: DateTime<Utc> = archived_at.into();
     let grace_delta = archive_grace_delta(archive_grace);
     let expires_at = archived_dt + grace_delta;
 
     format!(
-        "{ARCHIVE_MARKER_PREFIX}{archived_at_secs}] Archived on {}. Scheduled for deletion on {} unless reopened.",
+        "Archived on {}. Scheduled for deletion on {} unless reopened.",
         archived_dt.format("%F %T %Z"),
         expires_at.format("%F %T %Z")
     )
@@ -208,14 +199,4 @@ fn archive_grace_delta(archive_grace: Duration) -> TimeDelta {
     let grace_secs = archive_grace.as_secs().min(i64::MAX as u64);
     TimeDelta::try_seconds(grace_secs as i64)
         .unwrap_or_else(|| TimeDelta::try_seconds(i64::MAX).unwrap())
-}
-
-pub fn parse_archived_at(topic: Option<&str>) -> Option<SystemTime> {
-    let topic = topic?;
-    let marker_start = topic.find(ARCHIVE_MARKER_PREFIX)?;
-    let rest = &topic[marker_start + ARCHIVE_MARKER_PREFIX.len()..];
-    let end = rest.find(']')?;
-    let timestamp = rest[..end].parse::<u64>().ok()?;
-
-    UNIX_EPOCH.checked_add(Duration::from_secs(timestamp))
 }
