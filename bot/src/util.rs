@@ -85,7 +85,7 @@ pub async fn ensure_isbn_text_channel(
         metadata.isbn_13
     ))
     .style(ButtonStyle::Primary)
-    .label("ウォッチリストに追加")])];
+    .label("Add to Watchlist")])];
 
     channel
         .id
@@ -445,11 +445,7 @@ async fn notify_watchers(
 }
 
 fn format_dm_content(entry: &str) -> String {
-    let mut content = format!("Reading session for {} is now active!\n", entry);
-
-    content.push_str("Use the buttons below to join the session.");
-
-    content
+    format!("Reading session for {} is now active!", entry)
 }
 
 fn format_metadata_post(metadata: &IsbnMetadata) -> String {
@@ -497,12 +493,12 @@ pub fn build_channel_buttons(
     remove_custom_id: Option<String>,
 ) -> Vec<CreateActionRow> {
     let mut buttons = vec![CreateButton::new_link(channel_url(guild_id, voice_channel))
-        .label("ボイスチャンネルに参加")];
+        .label("Join Voice Channel")];
 
     if let Some(text_channel) = text_channel {
         buttons.push(
             CreateButton::new_link(channel_url(guild_id, text_channel))
-                .label("テキストチャンネルを開く"),
+                .label("Open Text Channel"),
         );
     }
 
@@ -510,7 +506,7 @@ pub fn build_channel_buttons(
         buttons.push(
             CreateButton::new(custom_id)
                 .style(ButtonStyle::Danger)
-                .label("ウォッチリストから削除"),
+                .label("Remove from Watchlist"),
         );
     }
 

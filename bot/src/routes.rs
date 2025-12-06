@@ -141,7 +141,7 @@ async fn handle_open(
 
     Ok(InteractionReply {
         content: format!(
-            "Opened a reading session for **{}**(`{}`). Use the buttons below to join.",
+            "Opened a reading session for **{}**(`{}`).",
             display_title(&metadata.title, metadata.subtitle.as_deref(),),
             metadata.isbn_13,
         ),
