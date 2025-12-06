@@ -95,6 +95,7 @@ The project follows a *spec-first* approach — this document serves as the sour
   * Persist archive metadata (archived time, expiration, and original category) in the database and compute expiration from the stored timestamp and `ARCHIVE_GRACE_PERIOD_SECONDS` (default: **5184000** seconds = 60 days).
   * Delete archived channels whose grace period has elapsed.
   * Optionally refresh the channel topic with `format_archive_topic` for user guidance; topics may be edited freely because state is sourced from the database.
+* Archived channel topics present timestamps in the configured `TIME_ZONE` (IANA name, default: `UTC`).
 * When `/open` is executed for an ISBN whose channel is archived, the channel is moved back to the top of the text category, and its archived record is deleted so the channel becomes active again.
 
 ### Command Intake Moderation

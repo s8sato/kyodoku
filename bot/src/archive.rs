@@ -3,6 +3,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeDelta, Utc};
+use chrono_tz::Tz;
 use serenity::all::{ChannelId, ChannelType, EditChannel, GuildChannel, GuildId};
 use serenity::http::Http;
 use tracing::{error, info, warn};
@@ -77,7 +78,7 @@ async fn archive_channel(
     let archived_at: DateTime<Utc> = SystemTime::now().into();
     let grace_delta = archive_grace_delta(archive_grace);
     let expires_at = archived_at + grace_delta;
-    let topic = format_archive_topic(archived_at.into(), archive_grace);
+    let topic = format_archive_topic(archived_at.into(), archive_grace, state.config.time_zone);
 
     state
         .store
@@ -138,7 +139,11 @@ async fn handle_archived_channel(
         return Ok(());
     }
 
-    let formatted_topic = format_archive_topic(record.archived_at.into(), archive_grace);
+    let formatted_topic = format_archive_topic(
+        record.archived_at.into(),
+        archive_grace,
+        state.config.time_zone,
+    );
     if channel.topic.as_deref() != Some(formatted_topic.as_str()) {
         if let Err(err) = channel
             .id
@@ -183,15 +188,21 @@ async fn ensure_archived_record(
         .context("archived channel record missing after creation")
 }
 
-pub fn format_archive_topic(archived_at: SystemTime, archive_grace: Duration) -> String {
+pub fn format_archive_topic(
+    archived_at: SystemTime,
+    archive_grace: Duration,
+    time_zone: Tz,
+) -> String {
     let archived_dt: DateTime<Utc> = archived_at.into();
     let grace_delta = archive_grace_delta(archive_grace);
     let expires_at = archived_dt + grace_delta;
+    let archived_local = archived_dt.with_timezone(&time_zone);
+    let expires_local = expires_at.with_timezone(&time_zone);
 
     format!(
         "Archived on {}. Scheduled for deletion on {} unless reopened.",
-        archived_dt.format("%F %T %Z"),
-        expires_at.format("%F %T %Z")
+        archived_local.format("%F %T %Z"),
+        expires_local.format("%F %T %Z")
     )
 }
 

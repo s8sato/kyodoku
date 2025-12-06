@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use chrono_tz::Tz;
 use dotenvy::dotenv;
 use redis::Client as RedisClient;
 use serenity::all::{
@@ -38,6 +39,7 @@ pub struct Config {
     pub archived_channel_category_id: ChannelId,
     pub text_channel_capacity: usize,
     pub watchlist_limit: usize,
+    pub time_zone: Tz,
 }
 
 impl Config {
@@ -71,6 +73,16 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(30);
+        let time_zone = std::env::var("TIME_ZONE")
+            .ok()
+            .and_then(|value| match value.parse::<Tz>() {
+                Ok(tz) => Some(tz),
+                Err(err) => {
+                    warn!("Ignoring invalid time zone '{value}': {err:?}; defaulting to UTC");
+                    None
+                }
+            })
+            .unwrap_or(chrono_tz::UTC);
         let command_input_channel_id =
             Self::channel_id_from_env("COMMAND_INPUT_CHANNEL_ID", "command input")?;
         let text_channel_category_id =
@@ -94,6 +106,7 @@ impl Config {
             archived_channel_category_id,
             text_channel_capacity,
             watchlist_limit,
+            time_zone,
         })
     }
 

@@ -42,6 +42,7 @@ private PostgreSQL/Redis endpoints you provision.
        TEXT_CHANNEL_CAPACITY=150 \
        ARCHIVE_POLL_INTERVAL_SECONDS=86400 \
        ARCHIVE_GRACE_PERIOD_SECONDS=5184000 \
+       TIME_ZONE=UTC \
        WATCHLIST_LIMIT=30 \
        -a kyodoku-bot-<suffix>
      ```
