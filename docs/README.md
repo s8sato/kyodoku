@@ -12,6 +12,7 @@ contributors implementing features in the bot crate.
 - `server_configuration.md` — recommended Discord channel structure for kyodoku servers.
 - `deployment_oracle.md` — CI-driven deployment guide for Oracle Cloud Free Tier.
 - `deployment_fly.md` — Fly.io Machines deployment guide and app configuration template.
+- `deployment_railway.md` — Railway deployment guide and service configuration template.
 
 All project changes should be validated against these documents. Update the relevant file when the implementation diverges from
 the agreed behaviour.
