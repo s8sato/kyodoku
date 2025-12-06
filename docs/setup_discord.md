@@ -21,6 +21,7 @@ This guide walks through preparing credentials, configuring the bot container, a
    - `COMMAND_INPUT_CHANNEL_ID=` — optional. When set, the bot deletes any non-command messages from non-admin users in this channel to keep the command intake space clean.
    - `TEXT_CHANNEL_CATEGORY_ID=` — optional. When set, new ISBN text channels are created inside this category.
    - `VOICE_CHANNEL_CATEGORY_ID=` — optional. When set, ISBN voice channels are created inside this category.
+   - `TIME_ZONE=` — optional. Supply an [IANA time zone name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g., `Asia/Tokyo`) to control how archived channel topics display timestamps. Defaults to `UTC`.
    - Leave the PostgreSQL and Redis connection strings as their defaults unless you are running external services.
 4. Save the file. The bot container will read these values on startup.
 
