@@ -87,10 +87,11 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "room\n",
             "for readers to interpret the ending through sparse descriptions and the placement of symbolic items in the last scene||. Overall, an amazing read!\n",
             "```\n",
-            "By the final page, I was shocked that ||the seemingly harmless character was the culprit all along||.\n\n",
-            "After finishing, I'm still thinking about how the author ||leaves\n",
-            "room\n",
-            "for readers to interpret the ending through sparse descriptions and the placement of symbolic items in the last scene||. Overall, an amazing read!\n\n",
+            "> By the final page, I was shocked that ||the seemingly harmless character was the culprit all along||.\n",
+            "> \n",
+            "> After finishing, I'm still thinking about how the author ||leaves\n",
+            "> room\n",
+            "> for readers to interpret the ending through sparse descriptions and the placement of symbolic items in the last scene||. Overall, an amazing read!\n\n",
             "-# Take your time—and enjoy reading at your own pace.",
         ),
         cleanup = config.voice_cleanup_delay_seconds,
@@ -126,17 +127,18 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "- **{archive_poll} 秒** ごとにアーカイブ対象を確認します\n",
             "- アーカイブ済みチャンネルは活動がなければ **{archive_grace} 秒** 後に削除されます\n\n",
             "## :zipper_mouth: ネタバレへの配慮\n",
-            "文芸書などでネタバレを控えながら投稿したい場合、ネタバレ部分をスポイラーとしてマークすることができます：\n",
+            "文芸書などでネタバレを控えながら投稿したい場合、ネタバレ部分をスポイラーとしてマークできます：\n",
             "```\n",
             "最終ページをめくった感想ですが、||最後に明かされる真犯人が、これまで最も無害に見えた人物だった||という展開に驚かされました。\n\n",
             "読了後に考察すべき点として、作者が意図的に||結末の解釈を読者に委ねている\n",
             "余白\n",
             "の多い描写や、ラストシーンでの象徴的なアイテムの配置||があると感じました。全体的に素晴らしい読書体験でした！\n",
             "```\n",
-            "最終ページをめくった感想ですが、||最後に明かされる真犯人が、これまで最も無害に見えた人物だった||という展開に驚かされました。\n\n",
-            "読了後に考察すべき点として、作者が意図的に||結末の解釈を読者に委ねている\n",
-            "余白\n",
-            "の多い描写や、ラストシーンでの象徴的なアイテムの配置||があると感じました。全体的に素晴らしい読書体験でした！\n\n",
+            "> 最終ページをめくった感想ですが、||最後に明かされる真犯人が、これまで最も無害に見えた人物だった||という展開に驚かされました。\n",
+            "> \n",
+            "> 読了後に考察すべき点として、作者が意図的に||結末の解釈を読者に委ねている\n",
+            "> 余白\n",
+            "> の多い描写や、ラストシーンでの象徴的なアイテムの配置||があると感じました。全体的に素晴らしい読書体験でした！\n\n",
             "-# どうぞ、あなたのペースで読書をお楽しみください。",
         ),
         cleanup = config.voice_cleanup_delay_seconds,
@@ -210,14 +212,28 @@ async fn ensure_messages(
 
 fn split_with_header(header: &str, body: String) -> Vec<String> {
     let mut chunks = Vec::new();
-    let mut start = 0;
-    let body_chars: Vec<char> = body.chars().collect();
+    let mut current = String::new();
 
-    while start < body_chars.len() {
-        let end = (start + MAX_MESSAGE_LENGTH).min(body_chars.len());
-        let chunk: String = body_chars[start..end].iter().collect();
-        chunks.push(chunk);
-        start = end;
+    for section in split_sections(&body) {
+        let section_len = section.chars().count();
+        let current_len = current.chars().count();
+        let separator_len = if current.is_empty() { 0 } else { 2 };
+
+        if current_len + separator_len + section_len > MAX_MESSAGE_LENGTH {
+            if !current.is_empty() {
+                chunks.push(std::mem::take(&mut current));
+            }
+        }
+
+        if !current.is_empty() {
+            current.push_str("\n\n");
+        }
+
+        current.push_str(&section);
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
     }
 
     let total = chunks.len();
@@ -226,14 +242,89 @@ fn split_with_header(header: &str, body: String) -> Vec<String> {
         .into_iter()
         .enumerate()
         .map(|(idx, chunk)| {
-            let mut message = String::from(header);
-            if total > 1 {
-                use std::fmt::Write;
-                write!(&mut message, " ({}/{total})", idx + 1).expect("write to string");
+            if idx == 0 {
+                let mut message = String::from(header);
+                if total > 1 {
+                    use std::fmt::Write;
+                    write!(&mut message, " ({}/{total})", idx + 1).expect("write to string");
+                }
+                message.push_str("\n\n");
+                message.push_str(&chunk);
+                message
+            } else {
+                chunk
             }
-            message.push_str("\n\n");
-            message.push_str(&chunk);
-            message
         })
         .collect()
+}
+
+fn split_sections(body: &str) -> Vec<String> {
+    let mut sections = Vec::new();
+    let mut current = String::new();
+
+    for line in body.lines() {
+        if line.starts_with("## ") && !current.is_empty() {
+            push_section(&mut sections, &mut current);
+        }
+
+        if !current.is_empty() {
+            current.push('\n');
+        }
+
+        current.push_str(line);
+    }
+
+    push_section(&mut sections, &mut current);
+
+    sections
+}
+
+fn push_section(sections: &mut Vec<String>, current: &mut String) {
+    if current.is_empty() {
+        return;
+    }
+
+    while current.ends_with('\n') {
+        current.pop();
+    }
+
+    sections.push(std::mem::take(current));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn repeat_text(text: &str, count: usize) -> String {
+        std::iter::repeat(text).take(count).collect::<Vec<_>>().join("")
+    }
+
+    #[test]
+    fn splits_on_section_boundaries() {
+        let body = format!(
+            "intro\n\n## Section A\n{}\n\n## Section B\n{}",
+            repeat_text("content ", 150),
+            repeat_text("more ", 150),
+        );
+
+        let messages = split_with_header("HEADER", body);
+
+        assert_eq!(messages.len(), 2);
+        assert!(messages[0].contains("## Section A"));
+        assert!(!messages[0].contains("## Section B"));
+        assert!(messages[1].contains("## Section B"));
+        assert!(messages[0].starts_with("HEADER (1/2)\n\n"));
+        assert!(!messages[1].starts_with("HEADER"));
+    }
+
+    #[test]
+    fn keeps_preamble_with_first_section() {
+        let body = "intro line\n\n## Section\ncontent".to_string();
+
+        let messages = split_with_header("HEADER", body);
+
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].starts_with("HEADER\n\n"));
+        assert!(messages[0].contains("intro line\n\n## Section\ncontent"));
+    }
 }
