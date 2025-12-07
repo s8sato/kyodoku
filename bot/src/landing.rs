@@ -240,14 +240,18 @@ fn split_with_header(header: &str, body: String) -> Vec<String> {
         .into_iter()
         .enumerate()
         .map(|(idx, chunk)| {
-            let mut message = String::from(header);
-            if total > 1 {
-                use std::fmt::Write;
-                write!(&mut message, " ({}/{total})", idx + 1).expect("write to string");
+            if idx == 0 {
+                let mut message = String::from(header);
+                if total > 1 {
+                    use std::fmt::Write;
+                    write!(&mut message, " ({}/{total})", idx + 1).expect("write to string");
+                }
+                message.push_str("\n\n");
+                message.push_str(&chunk);
+                message
+            } else {
+                chunk
             }
-            message.push_str("\n\n");
-            message.push_str(&chunk);
-            message
         })
         .collect()
 }
@@ -307,6 +311,8 @@ mod tests {
         assert!(messages[0].contains("## Section A"));
         assert!(!messages[0].contains("## Section B"));
         assert!(messages[1].contains("## Section B"));
+        assert!(messages[0].starts_with("HEADER (1/2)\n\n"));
+        assert!(!messages[1].starts_with("HEADER"));
     }
 
     #[test]
