@@ -210,14 +210,28 @@ async fn ensure_messages(
 
 fn split_with_header(header: &str, body: String) -> Vec<String> {
     let mut chunks = Vec::new();
-    let mut start = 0;
-    let body_chars: Vec<char> = body.chars().collect();
+    let mut current = String::new();
 
-    while start < body_chars.len() {
-        let end = (start + MAX_MESSAGE_LENGTH).min(body_chars.len());
-        let chunk: String = body_chars[start..end].iter().collect();
-        chunks.push(chunk);
-        start = end;
+    for section in split_sections(&body) {
+        let section_len = section.chars().count();
+        let current_len = current.chars().count();
+        let separator_len = if current.is_empty() { 0 } else { 2 };
+
+        if current_len + separator_len + section_len > MAX_MESSAGE_LENGTH {
+            if !current.is_empty() {
+                chunks.push(std::mem::take(&mut current));
+            }
+        }
+
+        if !current.is_empty() {
+            current.push_str("\n\n");
+        }
+
+        current.push_str(&section);
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
     }
 
     let total = chunks.len();
@@ -236,4 +250,73 @@ fn split_with_header(header: &str, body: String) -> Vec<String> {
             message
         })
         .collect()
+}
+
+fn split_sections(body: &str) -> Vec<String> {
+    let mut sections = Vec::new();
+    let mut current = String::new();
+
+    for line in body.lines() {
+        if line.starts_with("## ") && !current.is_empty() {
+            push_section(&mut sections, &mut current);
+        }
+
+        if !current.is_empty() {
+            current.push('\n');
+        }
+
+        current.push_str(line);
+    }
+
+    push_section(&mut sections, &mut current);
+
+    sections
+}
+
+fn push_section(sections: &mut Vec<String>, current: &mut String) {
+    if current.is_empty() {
+        return;
+    }
+
+    while current.ends_with('\n') {
+        current.pop();
+    }
+
+    sections.push(std::mem::take(current));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn repeat_text(text: &str, count: usize) -> String {
+        std::iter::repeat(text).take(count).collect::<Vec<_>>().join("")
+    }
+
+    #[test]
+    fn splits_on_section_boundaries() {
+        let body = format!(
+            "intro\n\n## Section A\n{}\n\n## Section B\n{}",
+            repeat_text("content ", 150),
+            repeat_text("more ", 150),
+        );
+
+        let messages = split_with_header("HEADER", body);
+
+        assert_eq!(messages.len(), 2);
+        assert!(messages[0].contains("## Section A"));
+        assert!(!messages[0].contains("## Section B"));
+        assert!(messages[1].contains("## Section B"));
+    }
+
+    #[test]
+    fn keeps_preamble_with_first_section() {
+        let body = "intro line\n\n## Section\ncontent".to_string();
+
+        let messages = split_with_header("HEADER", body);
+
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].starts_with("HEADER\n\n"));
+        assert!(messages[0].contains("intro line\n\n## Section\ncontent"));
+    }
 }
