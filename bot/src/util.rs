@@ -492,13 +492,13 @@ pub fn build_channel_buttons(
     voice_channel: ChannelId,
     remove_custom_id: Option<String>,
 ) -> Vec<CreateActionRow> {
-    let mut buttons = vec![CreateButton::new_link(channel_url(guild_id, voice_channel))
-        .label("Join Voice Channel")];
+    let mut buttons =
+        vec![CreateButton::new_link(channel_url(guild_id, voice_channel))
+            .label("Join Voice Channel")];
 
     if let Some(text_channel) = text_channel {
         buttons.push(
-            CreateButton::new_link(channel_url(guild_id, text_channel))
-                .label("Open Text Channel"),
+            CreateButton::new_link(channel_url(guild_id, text_channel)).label("Open Text Channel"),
         );
     }
 

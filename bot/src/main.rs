@@ -19,6 +19,7 @@ use serenity::all::{
 use serenity::prelude::TypeMapKey;
 use songbird::SerenityInit;
 use tokio::signal;
+use tokio::task::JoinError;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -156,6 +157,11 @@ impl Handler {
         let data = ctx.data.read().await;
         data.get::<StateKey>().cloned()
     }
+}
+
+enum ShutdownReason {
+    Signal(std::io::Result<()>),
+    ClientFinished,
 }
 
 #[async_trait]
@@ -320,21 +326,74 @@ async fn main() -> Result<()> {
     });
 
     let shard_manager = client.shard_manager.clone();
-    let client_future = tokio::spawn(async move {
-        if let Err(err) = client.start().await {
-            error!("Client exited with error: {err:?}");
-        }
-    });
+    let client_handle = tokio::spawn(async move { client.start().await });
+    tokio::pin!(client_handle);
 
-    signal::ctrl_c().await?;
+    let mut client_result: Option<Result<Result<(), serenity::Error>, JoinError>> = None;
+    let shutdown_reason = tokio::select! {
+        result = signal::ctrl_c() => ShutdownReason::Signal(result),
+        result = &mut client_handle => {
+            client_result = Some(result);
+            ShutdownReason::ClientFinished
+        },
+    };
+
     shard_manager.shutdown_all().await;
     archive_handle.abort();
-    if let Err(err) = archive_handle.await {
-        warn!("Archive task join error: {err:?}");
-    }
-    if let Err(err) = client_future.await {
-        error!("Client task join error: {err:?}");
+
+    if client_result.is_none() {
+        client_result = Some(client_handle.await);
     }
 
-    Ok(())
+    let archive_result = archive_handle.await;
+
+    let mut exit_code = match (&shutdown_reason, client_result.as_ref()) {
+        (ShutdownReason::Signal(Ok(())), _) => {
+            info!("Shutdown signal received; stopping bot.");
+            130
+        }
+        (ShutdownReason::Signal(Err(err)), _) => {
+            error!("Failed to listen for shutdown signal: {err:?}");
+            1
+        }
+        (ShutdownReason::ClientFinished, Some(Ok(Ok(())))) => {
+            warn!("Discord client exited unexpectedly without shutdown signal.");
+            1
+        }
+        (ShutdownReason::ClientFinished, Some(Ok(Err(err)))) => {
+            error!("Discord client exited with error: {err:?}");
+            1
+        }
+        (ShutdownReason::ClientFinished, Some(Err(err))) => {
+            error!("Discord client task join error: {err:?}");
+            1
+        }
+        (ShutdownReason::ClientFinished, None) => {
+            error!("Discord client finished without join result.");
+            1
+        }
+    };
+
+    if let Some(result) = client_result {
+        if !matches!(shutdown_reason, ShutdownReason::ClientFinished) {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    error!("Discord client exited with error after shutdown: {err:?}");
+                    exit_code = exit_code.max(1);
+                }
+                Err(err) => {
+                    error!("Discord client task join error after shutdown: {err:?}");
+                    exit_code = exit_code.max(1);
+                }
+            }
+        }
+    }
+
+    if let Err(err) = archive_result {
+        warn!("Archive task join error: {err:?}");
+        exit_code = exit_code.max(1);
+    }
+
+    std::process::exit(exit_code);
 }
