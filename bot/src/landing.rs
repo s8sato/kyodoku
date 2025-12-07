@@ -2,12 +2,13 @@ use anyhow::Result;
 use serenity::all::{ChannelId, EditMessage, Message, UserId};
 use serenity::builder::GetMessages;
 use serenity::prelude::CacheHttp;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::Config;
 
 const EN_HEADER: &str = "# Welcome to the Shared Reading Server :books:";
 const JA_HEADER: &str = "# ようこそ、共読サーバーへ :books:";
+const MAX_MESSAGE_LENGTH: usize = 1900;
 
 pub async fn refresh_landing_posts(
     ctx: &serenity::all::Context,
@@ -22,40 +23,39 @@ pub async fn refresh_landing_posts(
     let mut landing_messages =
         fetch_existing_landing_messages(ctx, channel_id, bot_user_id).await?;
 
-    let japanese = ensure_message(
+    let japanese = ensure_messages(
         ctx,
         channel_id,
-        landing_messages.remove(JA_HEADER),
+        landing_messages.remove(JA_HEADER).unwrap_or_default(),
         &desired_posts.0,
     )
     .await?;
-    let english = ensure_message(
+    let english = ensure_messages(
         ctx,
         channel_id,
-        landing_messages.remove(EN_HEADER),
+        landing_messages.remove(EN_HEADER).unwrap_or_default(),
         &desired_posts.1,
     )
     .await?;
 
-    if let Some(extra) = landing_messages.values().next() {
-        warn!(
-            "unexpected extra landing message left untouched: {}",
-            extra.id
-        );
-    }
-
     info!(
-        "refreshed landing posts (ja: {}, en: {})",
-        japanese.id, english.id
+        "refreshed landing posts (ja: {:?}, en: {:?})",
+        japanese
+            .iter()
+            .map(|message| message.id.to_string())
+            .collect::<Vec<_>>(),
+        english
+            .iter()
+            .map(|message| message.id.to_string())
+            .collect::<Vec<_>>()
     );
 
     Ok(())
 }
 
-fn desired_posts(config: &Config) -> (String, String) {
-    let english = format!(
+fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
+    let english_body = format!(
         concat!(
-            "{header}\n",
             "A place where people reading the same book can loosely connect.\n\n",
             "## :book: Create a Reading Space\n",
             "### `/open <ISBN>`\n",
@@ -72,7 +72,7 @@ fn desired_posts(config: &Config) -> (String, String) {
             "- Removes one or more books from your watchlist\n\n",
             "## :bell: Enabling DM Notifications\n",
             "To receive active session alerts from the kyodoku app, please enable DMs in Discord:\n",
-            "**User Settings → Content & Social → DIrect Messages → Allow DMs from other members in this server**\n",
+            "**User Settings → Content & Social → Direct Messages → Allow DMs from other members in this server**\n",
             "Or:\n",
             "Right-click server name → **Privacy Settings → Allow DMs from other members in this server**\n\n",
             "## :file_cabinet: Channel Archival\n",
@@ -93,7 +93,6 @@ fn desired_posts(config: &Config) -> (String, String) {
             "for readers to interpret the ending through sparse descriptions and the placement of symbolic items in the last scene||. Overall, an amazing read!\n\n",
             "-# Take your time—and enjoy reading at your own pace.",
         ),
-        header = EN_HEADER,
         cleanup = config.voice_cleanup_delay_seconds,
         capacity = config.text_channel_capacity,
         archive_poll = config.archive_poll_interval_seconds,
@@ -101,9 +100,8 @@ fn desired_posts(config: &Config) -> (String, String) {
         watchlist_limit = config.watchlist_limit,
     );
 
-    let japanese = format!(
+    let japanese_body = format!(
         concat!(
-            "{header}\n",
             "同じ本を読む人がゆるくつながるサーバーです。\n\n",
             "## :book: 読書空間の作成\n",
             "### `/open <ISBN>`\n",
@@ -134,14 +132,13 @@ fn desired_posts(config: &Config) -> (String, String) {
             "読了後に考察すべき点として、作者が意図的に||結末の解釈を読者に委ねている\n",
             "余白\n",
             "の多い描写や、ラストシーンでの象徴的なアイテムの配置||があると感じました。全体的に素晴らしい読書体験でした！\n",
-            "```\n",
+            "```",
             "最終ページをめくった感想ですが、||最後に明かされる真犯人が、これまで最も無害に見えた人物だった||という展開に驚かされました。\n\n",
             "読了後に考察すべき点として、作者が意図的に||結末の解釈を読者に委ねている\n",
             "余白\n",
             "の多い描写や、ラストシーンでの象徴的なアイテムの配置||があると感じました。全体的に素晴らしい読書体験でした！\n\n",
             "-# どうぞ、あなたのペースで読書をお楽しみください。",
         ),
-        header = JA_HEADER,
         cleanup = config.voice_cleanup_delay_seconds,
         capacity = config.text_channel_capacity,
         archive_poll = config.archive_poll_interval_seconds,
@@ -149,48 +146,94 @@ fn desired_posts(config: &Config) -> (String, String) {
         watchlist_limit = config.watchlist_limit,
     );
 
-    (japanese, english)
+    (
+        split_with_header(JA_HEADER, japanese_body),
+        split_with_header(EN_HEADER, english_body),
+    )
 }
 
 async fn fetch_existing_landing_messages(
     ctx: &serenity::all::Context,
     channel_id: ChannelId,
     bot_user_id: UserId,
-) -> Result<std::collections::HashMap<&'static str, Message>> {
-    let messages = channel_id
+) -> Result<std::collections::HashMap<&'static str, Vec<Message>>> {
+    let mut messages = channel_id
         .messages(ctx.http(), GetMessages::new().limit(50))
         .await?;
 
-    let mut landing_messages = std::collections::HashMap::new();
+    messages.sort_by_key(|message| message.id);
+
+    let mut landing_messages: std::collections::HashMap<&'static str, Vec<Message>> =
+        std::collections::HashMap::new();
     for message in messages
         .into_iter()
         .filter(|message| message.author.id == bot_user_id)
     {
         if message.content.starts_with(JA_HEADER) {
-            landing_messages.entry(JA_HEADER).or_insert(message);
+            landing_messages.entry(JA_HEADER).or_default().push(message);
         } else if message.content.starts_with(EN_HEADER) {
-            landing_messages.entry(EN_HEADER).or_insert(message);
+            landing_messages.entry(EN_HEADER).or_default().push(message);
         }
     }
 
     Ok(landing_messages)
 }
 
-async fn ensure_message(
+async fn ensure_messages(
     ctx: &serenity::all::Context,
     channel_id: ChannelId,
-    existing: Option<Message>,
-    content: &str,
-) -> Result<Message> {
-    let Some(mut message) = existing else {
-        return Ok(channel_id.say(ctx.http(), content).await?);
-    };
+    existing: Vec<Message>,
+    contents: &[String],
+) -> Result<Vec<Message>> {
+    let mut existing_iter = existing.into_iter();
+    let mut synced = Vec::with_capacity(contents.len());
 
-    if message.content != content {
-        message
-            .edit(ctx.http(), EditMessage::new().content(content))
-            .await?;
+    for content in contents {
+        if let Some(mut message) = existing_iter.next() {
+            if message.content != *content {
+                message
+                    .edit(ctx.http(), EditMessage::new().content(content))
+                    .await?;
+            }
+            synced.push(message);
+        } else {
+            synced.push(channel_id.say(ctx.http(), content).await?);
+        }
     }
 
-    Ok(message)
+    for message in existing_iter {
+        message.delete(ctx.http()).await?;
+    }
+
+    Ok(synced)
+}
+
+fn split_with_header(header: &str, body: String) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    let body_chars: Vec<char> = body.chars().collect();
+
+    while start < body_chars.len() {
+        let end = (start + MAX_MESSAGE_LENGTH).min(body_chars.len());
+        let chunk: String = body_chars[start..end].iter().collect();
+        chunks.push(chunk);
+        start = end;
+    }
+
+    let total = chunks.len();
+
+    chunks
+        .into_iter()
+        .enumerate()
+        .map(|(idx, chunk)| {
+            let mut message = String::from(header);
+            if total > 1 {
+                use std::fmt::Write;
+                write!(&mut message, " ({}/{total})", idx + 1).expect("write to string");
+            }
+            message.push_str("\n\n");
+            message.push_str(&chunk);
+            message
+        })
+        .collect()
 }
