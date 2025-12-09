@@ -1,10 +1,11 @@
+mod activity;
 mod isbn;
 mod landing;
 mod routes;
 mod store;
 mod util;
 
-use std::{convert::TryInto, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -32,11 +33,13 @@ pub struct Config {
     pub redis_url: String,
     pub voice_cleanup_delay_seconds: u64,
     pub command_input_channel_id: Option<ChannelId>,
-    pub text_category_ids: [ChannelId; 9],
+    pub text_category_ids: Vec<ChannelId>,
     pub voice_channel_category_id: ChannelId,
     pub text_activity_eval_interval_seconds: u64,
+    pub text_activity_presence_factor: f64,
     pub text_category_swap_count: usize,
     pub text_category_prune_count: usize,
+    pub text_category_capacity: usize,
     pub watchlist_limit: usize,
     pub time_zone: Tz,
 }
@@ -58,6 +61,11 @@ impl Config {
                 .and_then(|value| value.parse().ok())
                 .filter(|value| *value > 0)
                 .unwrap_or(86_400);
+        let text_activity_presence_factor = std::env::var("TEXT_ACTIVITY_PRESENCE_FACTOR")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .filter(|value: &f64| *value > 0.0)
+            .unwrap_or(2.0);
         let text_category_swap_count = std::env::var("TEXT_CATEGORY_SWAP_COUNT")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -68,6 +76,13 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(10);
+        let min_text_category_capacity =
+            text_category_swap_count + text_category_swap_count.max(text_category_prune_count);
+        let text_category_capacity = std::env::var("TEXT_CATEGORY_CAPACITY")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .map(|value: usize| value.clamp(min_text_category_capacity, 50))
+            .unwrap_or(50);
         let watchlist_limit = std::env::var("WATCHLIST_LIMIT")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -88,14 +103,23 @@ impl Config {
         let mut text_category_ids = Vec::with_capacity(9);
         for idx in 1..=9 {
             let env_key = format!("TEXT_CATEGORY_{idx}_ID");
-            text_category_ids.push(Self::required_channel_id_from_env(
-                &env_key,
-                &format!("text category {idx}"),
-            )?);
+            match std::env::var(&env_key) {
+                Ok(value) if !value.trim().is_empty() => {
+                    text_category_ids.push(Self::required_channel_id_from_env(
+                        &env_key,
+                        &format!("text category {idx}"),
+                    )?);
+                }
+                Ok(_) | Err(std::env::VarError::NotPresent) => break,
+                Err(err) => return Err(err.into()),
+            }
         }
-        let text_category_ids: [ChannelId; 9] = text_category_ids
-            .try_into()
-            .expect("exactly nine text category ids required");
+
+        if text_category_ids.is_empty() {
+            return Err(anyhow!(
+                "At least one text category (TEXT_CATEGORY_1_ID) must be configured"
+            ));
+        }
         let voice_channel_category_id =
             Self::required_channel_id_from_env("VOICE_CHANNEL_CATEGORY_ID", "voice")?;
 
@@ -109,8 +133,10 @@ impl Config {
             text_category_ids,
             voice_channel_category_id,
             text_activity_eval_interval_seconds,
+            text_activity_presence_factor,
             text_category_swap_count,
             text_category_prune_count,
+            text_category_capacity,
             watchlist_limit,
             time_zone,
         })
@@ -185,6 +211,14 @@ impl serenity::prelude::EventHandler for Handler {
         if let Err(err) = landing::refresh_landing_posts(&ctx, &state.config, ready.user.id).await {
             warn!("failed to refresh landing posts: {err:?}");
         }
+
+        let ctx_clone = ctx.clone();
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            if let Err(err) = activity::run_text_activity_eval_loop(ctx_clone, state_clone).await {
+                warn!("failed to evaluate text channel activity: {err:?}");
+            }
+        });
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
@@ -279,8 +313,15 @@ impl serenity::prelude::EventHandler for Handler {
         let new_channel = new.channel_id;
 
         if let Err(err) =
-            util::handle_voice_state_transition(&ctx, state, guild_id, old_channel, new_channel)
-                .await
+            util::handle_voice_state_transition(
+                &ctx,
+                state,
+                guild_id,
+                new.user_id,
+                old_channel,
+                new_channel,
+            )
+            .await
         {
             error!("voice state handling failed: {err:?}");
         }

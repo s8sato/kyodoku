@@ -70,9 +70,9 @@ The project follows a *spec-first* approach — this document serves as the sour
 ### Channel Placement
 
 * ISBN voice channels belong to the category provided via the `VOICE_CHANNEL_CATEGORY_ID` environment variable.
-* ISBN text channels use a **9-tier category ladder**:
-  * Each tier is configured via `TEXT_CATEGORY_1_ID` … `TEXT_CATEGORY_9_ID` (nine variables).
-  * Every category is treated as having 50 channel slots (Discord’s limit).
+* ISBN text channels use a **configurable category ladder** with 1–9 tiers:
+  * Each tier is configured via consecutive variables starting with `TEXT_CATEGORY_1_ID` (e.g., `TEXT_CATEGORY_2_ID`, `TEXT_CATEGORY_3_ID`, …). Configuration stops at the first missing variable.
+  * Each category can hold up to `TEXT_CATEGORY_CAPACITY` channels (bounded between `TEXT_CATEGORY_SWAP_COUNT + max(TEXT_CATEGORY_SWAP_COUNT, TEXT_CATEGORY_PRUNE_COUNT)` and **50**).
   * Channel names exceeding the length limit are truncated with an ellipsis suffix to make the shortening visible.
 
 ### Session Deletion
@@ -97,15 +97,21 @@ The project follows a *spec-first* approach — this document serves as the sour
   * Reopening an existing ISBN moves it to the top of its current category; siblings shift down one rank.
 
 * **Periodic activity evaluation** (interval controlled by `TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS`)
-  * Each channel is scored via the configured formula; the latest score and breakdown are written to the channel topic.
+* Each channel is scored via the configured formula; the latest score and breakdown are written to the channel topic.
+  * `activity_score = watchlist_count + (unique_voice_participants × TEXT_ACTIVITY_PRESENCE_FACTOR)`
+  * `unique_voice_participants` counts distinct members who joined the book's voice channel during the most recent
+    `TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS` window (participants accumulate across the window, even if they leave before
+    scoring runs).
   * For categories 1 through 8, swap the bottom `TEXT_CATEGORY_SWAP_COUNT` channels in category *n* with the top `TEXT_CATEGORY_SWAP_COUNT` channels in category *n+1*.
   * Delete the bottom `TEXT_CATEGORY_PRUNE_COUNT` channels in category 9 permanently.
 
 * **Environment variables**
-  * `TEXT_CATEGORY_1_ID` … `TEXT_CATEGORY_9_ID`: IDs for the nine text categories (required).
-  * `TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS`: cadence for evaluating scores.
-  * `TEXT_CATEGORY_SWAP_COUNT`: number of channels swapped between neighboring tiers (default: **10**).
-  * `TEXT_CATEGORY_PRUNE_COUNT`: number of lowest-ranked channels in category 9 to delete each cycle (default: **10**).
+* `TEXT_CATEGORY_1_ID` … `TEXT_CATEGORY_9_ID`: IDs for consecutively configured text categories (at least one required).
+* `TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS`: cadence for evaluating scores.
+* `TEXT_ACTIVITY_PRESENCE_FACTOR`: multiplier applied to unique voice participants when computing text activity scores (default: **2.0**).
+* `TEXT_CATEGORY_SWAP_COUNT`: number of channels swapped between neighboring tiers (default: **10**).
+* `TEXT_CATEGORY_PRUNE_COUNT`: number of lowest-ranked channels in category 9 to delete each cycle (default: **10**).
+* `TEXT_CATEGORY_CAPACITY`: maximum channel count per text category (bounded by swap/prune counts; default: **50**).
 
 ### Command Intake Moderation
 

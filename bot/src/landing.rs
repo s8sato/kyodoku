@@ -54,6 +54,40 @@ pub async fn refresh_landing_posts(
 }
 
 fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
+    let category_count = config.text_category_ids.len();
+    let last_category = category_count;
+    let category_capacity = config.text_category_capacity;
+
+    let swap_line_en = if category_count > 1 {
+        format!(
+            "- The bottom **{swap_count}** channels in category n swap with the top **{swap_count}** channels in category n+1 (n = 1..{max_category})\\n",
+            swap_count = config.text_category_swap_count,
+            max_category = category_count - 1
+        )
+    } else {
+        "- Swapping is skipped when only one text category is configured\\n".to_string()
+    };
+    let prune_line_en = format!(
+        "- The bottom **{prune_count}** channels in category {last_category} are deleted each cycle\\n\\n",
+        prune_count = config.text_category_prune_count,
+        last_category = last_category
+    );
+
+    let swap_line_ja = if category_count > 1 {
+        format!(
+            "- カテゴリnの下位 **{swap_count}** 件とカテゴリn+1の上位 **{swap_count}** 件を入れ替えます（n = 1〜{max_category}）\\n",
+            swap_count = config.text_category_swap_count,
+            max_category = category_count - 1
+        )
+    } else {
+        "- カテゴリが1つの場合、入れ替え処理はスキップされます\\n".to_string()
+    };
+    let prune_line_ja = format!(
+        "- カテゴリ{last_category}の下位 **{prune_count}** 件は各サイクルで削除されます\\n\\n",
+        prune_count = config.text_category_prune_count,
+        last_category = last_category
+    );
+
     let english_body = format!(
         concat!(
             "A place where people reading the same book can loosely connect.\n\n",
@@ -76,10 +110,10 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "Or:\n",
             "Right-click server name → **Privacy Settings → Allow DMs from other members in this server**\n\n",
             "## :file_cabinet: Text Channel Ladder\n",
-            "- New ISBN channels start at the top of category 9 (each category holds 50 channels)\n",
+            "- New ISBN channels start at the top of category {last_category} (each category holds up to {category_capacity} channels)\n",
             "- Activity scores refresh every **{eval_interval} seconds** and are written to channel topics\n",
-            "- The bottom **{swap_count}** channels in category n swap with the top **{swap_count}** channels in category n+1 (n = 1..8)\n",
-            "- The bottom **{prune_count}** channels in category 9 are deleted each cycle\n\n",
+            "{swap_line_en}",
+            "{prune_line_en}",
             "## :zipper_mouth: Spoiler-Friendly Posts\n",
             "When you want to share impressions without revealing plot points, mark spoilers with `||double bars||`:\n",
             "```\n",
@@ -97,9 +131,11 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
         ),
         cleanup = config.voice_cleanup_delay_seconds,
         eval_interval = config.text_activity_eval_interval_seconds,
-        swap_count = config.text_category_swap_count,
-        prune_count = config.text_category_prune_count,
         watchlist_limit = config.watchlist_limit,
+        last_category = last_category,
+        category_capacity = category_capacity,
+        swap_line_en = swap_line_en,
+        prune_line_en = prune_line_en,
     );
 
     let japanese_body = format!(
@@ -124,10 +160,10 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "または：\n",
             "サーバー名を右クリック → **プライバシー設定 → このサーバーのメンバーからのDMを許可**\n\n",
             "## :file_cabinet: テキストチャンネルの階層\n",
-            "- 新しいISBNチャンネルはカテゴリ9の先頭に配置されます（各カテゴリの上限は50件）\n",
+            "- 新しいISBNチャンネルはカテゴリ{last_category}の先頭に配置されます（各カテゴリの上限は{category_capacity}件）\n",
             "- アクティビティスコアは **{eval_interval} 秒** ごとに更新され、トピックに明示されます\n",
-            "- カテゴリnの下位 **{swap_count}** 件とカテゴリn+1の上位 **{swap_count}** 件を入れ替えます（n = 1〜8）\n",
-            "- カテゴリ9の下位 **{prune_count}** 件は各サイクルで削除されます\n\n",
+            "{swap_line_ja}",
+            "{prune_line_ja}",
             "## :zipper_mouth: ネタバレへの配慮\n",
             "文芸書などでネタバレを控えながら投稿したい場合、ネタバレ部分をスポイラーとしてマークできます：\n",
             "```\n",
@@ -145,9 +181,11 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
         ),
         cleanup = config.voice_cleanup_delay_seconds,
         eval_interval = config.text_activity_eval_interval_seconds,
-        swap_count = config.text_category_swap_count,
-        prune_count = config.text_category_prune_count,
         watchlist_limit = config.watchlist_limit,
+        last_category = last_category,
+        category_capacity = category_capacity,
+        swap_line_ja = swap_line_ja,
+        prune_line_ja = prune_line_ja,
     );
 
     (

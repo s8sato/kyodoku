@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, GuildId, UserId};
 use sqlx::{postgres::PgPoolOptions, FromRow, PgPool};
+use std::collections::HashMap;
 
 use crate::isbn::IsbnMetadata;
 
@@ -169,6 +170,74 @@ impl Store {
         Ok(record.map(|(id,)| ChannelId::new(id as u64)))
     }
 
+    pub async fn list_text_channels(&self) -> Result<Vec<DbTextChannel>> {
+        let records = sqlx::query_as::<_, DbTextChannel>(
+            "SELECT guild_id, channel_id, isbn_13 FROM text_channels",
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(records)
+    }
+
+    pub async fn record_voice_participation(
+        &self,
+        guild_id: GuildId,
+        isbn_13: &str,
+        user_id: UserId,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO voice_participants (guild_id, isbn_13, user_id, last_seen, created_at, updated_at)
+             VALUES ($1, $2, $3, NOW(), NOW(), NOW())
+             ON CONFLICT (guild_id, isbn_13, user_id) DO UPDATE SET
+                 last_seen = NOW(),
+                 updated_at = NOW()",
+        )
+        .bind(guild_id.get() as i64)
+        .bind(isbn_13)
+        .bind(user_id.get() as i64)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn count_recent_voice_participants(
+        &self,
+        guild_id: GuildId,
+        isbn_13: &str,
+        lookback_seconds: u64,
+    ) -> Result<usize> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM voice_participants
+             WHERE guild_id = $1 AND isbn_13 = $2
+             AND last_seen >= NOW() - make_interval(secs => $3::double precision)",
+        )
+        .bind(guild_id.get() as i64)
+        .bind(isbn_13)
+        .bind(lookback_seconds as f64)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(count.max(0) as usize)
+    }
+
+    pub async fn list_watcher_counts(&self) -> Result<HashMap<(GuildId, String), usize>> {
+        let records = sqlx::query_as::<_, (i64, String, i64)>(
+            "SELECT guild_id, isbn_13, COUNT(*) as watcher_count FROM watchlist GROUP BY guild_id, isbn_13",
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        let mut counts = HashMap::new();
+        for (guild_id, isbn_13, count) in records {
+            let count = usize::try_from(count).unwrap_or(0);
+            counts.insert((GuildId::new(guild_id as u64), isbn_13), count);
+        }
+
+        Ok(counts)
+    }
+
     pub async fn start_voice_session(
         &self,
         guild_id: GuildId,
@@ -324,4 +393,11 @@ pub struct DbArchivedChannel {
     pub original_category_id: i64,
     pub archived_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct DbTextChannel {
+    pub guild_id: i64,
+    pub channel_id: i64,
+    pub isbn_13: String,
 }
