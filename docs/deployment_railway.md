@@ -38,16 +38,23 @@ Use this guide to deploy **kyodoku** to [Railway](https://railway.app) using the
        DISCORD_TOKEN=... \
        APPLICATION_ID=... \
        VOICE_CHANNEL_CATEGORY_ID=... \
-       TEXT_CHANNEL_CATEGORY_ID=... \
-       ARCHIVED_CHANNEL_CATEGORY_ID=... \
-       COMMAND_INPUT_CHANNEL_ID=... \
-       VOICE_CLEANUP_DELAY_SECONDS=60 \
-       TEXT_CHANNEL_CAPACITY=150 \
-       ARCHIVE_POLL_INTERVAL_SECONDS=86400 \
-       ARCHIVE_GRACE_PERIOD_SECONDS=5184000 \
-       TIME_ZONE=UTC \
-       WATCHLIST_LIMIT=30 \
-       --service kyodoku-bot
+      TEXT_CATEGORY_1_ID=... \
+      TEXT_CATEGORY_2_ID=... \
+      TEXT_CATEGORY_3_ID=... \
+      TEXT_CATEGORY_4_ID=... \
+      TEXT_CATEGORY_5_ID=... \
+      TEXT_CATEGORY_6_ID=... \
+      TEXT_CATEGORY_7_ID=... \
+      TEXT_CATEGORY_8_ID=... \
+      TEXT_CATEGORY_9_ID=... \
+      COMMAND_INPUT_CHANNEL_ID=... \
+      VOICE_CLEANUP_DELAY_SECONDS=60 \
+      TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS=86400 \
+      TEXT_CATEGORY_SWAP_COUNT=10 \
+      TEXT_CATEGORY_PRUNE_COUNT=10 \
+      TIME_ZONE=UTC \
+      WATCHLIST_LIMIT=30 \
+      --service kyodoku-bot
      ```
    - Adjust optional values as needed; the defaults in [`railway.toml`](../railway.toml) are overridden by these service variables.
 

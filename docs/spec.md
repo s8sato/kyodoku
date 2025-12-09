@@ -69,9 +69,11 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ### Channel Placement
 
-* ISBN text channels belong to the category provided via the `TEXT_CHANNEL_CATEGORY_ID` environment variable.
 * ISBN voice channels belong to the category provided via the `VOICE_CHANNEL_CATEGORY_ID` environment variable.
-* Channel names exceeding the length limit are truncated with an ellipsis suffix to make the shortening visible.
+* ISBN text channels use a **9-tier category ladder**:
+  * Each tier is configured via `TEXT_CATEGORY_1_ID` … `TEXT_CATEGORY_9_ID` (nine variables).
+  * Every category is treated as having 50 channel slots (Discord’s limit).
+  * Channel names exceeding the length limit are truncated with an ellipsis suffix to make the shortening visible.
 
 ### Session Deletion
 
@@ -86,17 +88,24 @@ The project follows a *spec-first* approach — this document serves as the sour
 * Notify all users who have that ISBN on their watchlist via DM.
   * DM message includes links to the ISBN text discussion channel (if present) and the active voice channel.
 
-### Text Channel Archiving
+### Text Channel Lifecycle (9-tier system)
 
-* A dedicated `ARCHIVED_CHANNEL_CATEGORY_ID` holds overflow text channels.
-* `TEXT_CHANNEL_CAPACITY` (default: **150**) limits how many ISBN channels remain in the active `TEXT_CHANNEL_CATEGORY_ID`.
-* A background task runs every `ARCHIVE_POLL_INTERVAL_SECONDS` (default: **86400** seconds) to:
-  * Move channels beyond the configured capacity into the archived category.
-  * Persist archive metadata (archived time, expiration, and original category) in the database and compute expiration from the stored timestamp and `ARCHIVE_GRACE_PERIOD_SECONDS` (default: **5184000** seconds = 60 days).
-  * Delete archived channels whose grace period has elapsed.
-  * Optionally refresh the channel topic with `format_archive_topic` for user guidance; topics may be edited freely because state is sourced from the database.
-* Archived channel topics present timestamps in the configured `TIME_ZONE` (IANA name, default: `UTC`).
-* When `/open` is executed for an ISBN whose channel is archived, the channel is moved back to the top of the text category, and its archived record is deleted so the channel becomes active again.
+* **Opening channels**
+  * A brand-new ISBN channel is created at the top of **category 9**.
+    * If category 9 already holds 50 channels, `/open` fails because no slots remain.
+    * Existing channels in category 9 shift down one rank.
+  * Reopening an existing ISBN moves it to the top of its current category; siblings shift down one rank.
+
+* **Periodic activity evaluation** (interval controlled by `TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS`)
+  * Each channel is scored via the configured formula; the latest score and breakdown are written to the channel topic.
+  * For categories 1 through 8, swap the bottom `TEXT_CATEGORY_SWAP_COUNT` channels in category *n* with the top `TEXT_CATEGORY_SWAP_COUNT` channels in category *n+1*.
+  * Delete the bottom `TEXT_CATEGORY_PRUNE_COUNT` channels in category 9 permanently.
+
+* **Environment variables**
+  * `TEXT_CATEGORY_1_ID` … `TEXT_CATEGORY_9_ID`: IDs for the nine text categories (required).
+  * `TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS`: cadence for evaluating scores.
+  * `TEXT_CATEGORY_SWAP_COUNT`: number of channels swapped between neighboring tiers (default: **10**).
+  * `TEXT_CATEGORY_PRUNE_COUNT`: number of lowest-ranked channels in category 9 to delete each cycle (default: **10**).
 
 ### Command Intake Moderation
 

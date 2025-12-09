@@ -1,11 +1,10 @@
-mod archive;
 mod isbn;
 mod landing;
 mod routes;
 mod store;
 mod util;
 
-use std::sync::Arc;
+use std::{convert::TryInto, sync::Arc};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -32,13 +31,12 @@ pub struct Config {
     pub database_url: String,
     pub redis_url: String,
     pub voice_cleanup_delay_seconds: u64,
-    pub archive_poll_interval_seconds: u64,
-    pub archive_grace_period_seconds: u64,
     pub command_input_channel_id: Option<ChannelId>,
-    pub text_channel_category_id: ChannelId,
+    pub text_category_ids: [ChannelId; 9],
     pub voice_channel_category_id: ChannelId,
-    pub archived_channel_category_id: ChannelId,
-    pub text_channel_capacity: usize,
+    pub text_activity_eval_interval_seconds: u64,
+    pub text_category_swap_count: usize,
+    pub text_category_prune_count: usize,
     pub watchlist_limit: usize,
     pub time_zone: Tz,
 }
@@ -54,21 +52,22 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(60);
-        let archive_poll_interval_seconds = std::env::var("ARCHIVE_POLL_INTERVAL_SECONDS")
+        let text_activity_eval_interval_seconds =
+            std::env::var("TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS")
+                .ok()
+                .and_then(|value| value.parse().ok())
+                .filter(|value| *value > 0)
+                .unwrap_or(86_400);
+        let text_category_swap_count = std::env::var("TEXT_CATEGORY_SWAP_COUNT")
             .ok()
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
-            .unwrap_or(86_400);
-        let archive_grace_period_seconds = std::env::var("ARCHIVE_GRACE_PERIOD_SECONDS")
+            .unwrap_or(10);
+        let text_category_prune_count = std::env::var("TEXT_CATEGORY_PRUNE_COUNT")
             .ok()
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
-            .unwrap_or(5_184_000);
-        let text_channel_capacity = std::env::var("TEXT_CHANNEL_CAPACITY")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .filter(|value| *value > 0)
-            .unwrap_or(150);
+            .unwrap_or(10);
         let watchlist_limit = std::env::var("WATCHLIST_LIMIT")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -86,12 +85,19 @@ impl Config {
             .unwrap_or(chrono_tz::UTC);
         let command_input_channel_id =
             Self::channel_id_from_env("COMMAND_INPUT_CHANNEL_ID", "command input")?;
-        let text_channel_category_id =
-            Self::required_channel_id_from_env("TEXT_CHANNEL_CATEGORY_ID", "text")?;
+        let mut text_category_ids = Vec::with_capacity(9);
+        for idx in 1..=9 {
+            let env_key = format!("TEXT_CATEGORY_{idx}_ID");
+            text_category_ids.push(Self::required_channel_id_from_env(
+                &env_key,
+                &format!("text category {idx}"),
+            )?);
+        }
+        let text_category_ids: [ChannelId; 9] = text_category_ids
+            .try_into()
+            .expect("exactly nine text category ids required");
         let voice_channel_category_id =
             Self::required_channel_id_from_env("VOICE_CHANNEL_CATEGORY_ID", "voice")?;
-        let archived_channel_category_id =
-            Self::required_channel_id_from_env("ARCHIVED_CHANNEL_CATEGORY_ID", "archived")?;
 
         Ok(Self {
             discord_token,
@@ -99,13 +105,12 @@ impl Config {
             database_url,
             redis_url,
             voice_cleanup_delay_seconds,
-            archive_poll_interval_seconds,
-            archive_grace_period_seconds,
             command_input_channel_id,
-            text_channel_category_id,
+            text_category_ids,
             voice_channel_category_id,
-            archived_channel_category_id,
-            text_channel_capacity,
+            text_activity_eval_interval_seconds,
+            text_category_swap_count,
+            text_category_prune_count,
             watchlist_limit,
             time_zone,
         })
@@ -319,12 +324,6 @@ async fn main() -> Result<()> {
         data.insert::<StateKey>(state.clone());
     }
 
-    let http = client.http.clone();
-    let archive_state = state.clone();
-    let archive_handle = tokio::spawn(async move {
-        archive::run_archive_loop(http, archive_state).await;
-    });
-
     let shard_manager = client.shard_manager.clone();
     let client_handle = tokio::spawn(async move { client.start().await });
     tokio::pin!(client_handle);
@@ -339,13 +338,10 @@ async fn main() -> Result<()> {
     };
 
     shard_manager.shutdown_all().await;
-    archive_handle.abort();
 
     if client_result.is_none() {
         client_result = Some(client_handle.await);
     }
-
-    let archive_result = archive_handle.await;
 
     let mut exit_code = match (&shutdown_reason, client_result.as_ref()) {
         (ShutdownReason::Signal(Ok(())), _) => {
@@ -388,11 +384,6 @@ async fn main() -> Result<()> {
                 }
             }
         }
-    }
-
-    if let Err(err) = archive_result {
-        warn!("Archive task join error: {err:?}");
-        exit_code = exit_code.max(1);
     }
 
     std::process::exit(exit_code);
