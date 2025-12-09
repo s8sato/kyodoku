@@ -19,7 +19,6 @@ use serenity::all::{
 use serenity::prelude::TypeMapKey;
 use songbird::SerenityInit;
 use tokio::signal;
-use tokio::task::JoinError;
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -217,6 +216,7 @@ impl Handler {
     }
 }
 
+#[derive(Debug)]
 enum ShutdownReason {
     Signal(std::io::Result<()>),
     ClientFinished,
@@ -403,63 +403,64 @@ async fn main() -> Result<()> {
     let client_handle = tokio::spawn(async move { client.start().await });
     tokio::pin!(client_handle);
 
-    let mut client_result: Option<Result<Result<(), serenity::Error>, JoinError>> = None;
+    let shutdown_signal = async {
+        #[cfg(unix)]
+        {
+            let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
+                .expect("failed to install SIGTERM handler");
+            let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
+                .expect("failed to install SIGINT handler");
+
+            tokio::select! {
+                _ = sigterm.recv() => ShutdownReason::Signal(Ok(())),
+                _ = sigint.recv() => ShutdownReason::Signal(Ok(())),
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            signal::ctrl_c()
+                .await
+                .map(|_| ShutdownReason::Signal(Ok(())))
+                .unwrap_or_else(|err| ShutdownReason::Signal(Err(err)))
+        }
+    };
+
     let shutdown_reason = tokio::select! {
-        result = signal::ctrl_c() => ShutdownReason::Signal(result),
         result = &mut client_handle => {
-            client_result = Some(result);
-            ShutdownReason::ClientFinished
-        },
-    };
-
-    shard_manager.shutdown_all().await;
-
-    if client_result.is_none() {
-        client_result = Some(client_handle.await);
-    }
-
-    let mut exit_code = match (&shutdown_reason, client_result.as_ref()) {
-        (ShutdownReason::Signal(Ok(())), _) => {
-            info!("Shutdown signal received; stopping bot.");
-            130
-        }
-        (ShutdownReason::Signal(Err(err)), _) => {
-            error!("Failed to listen for shutdown signal: {err:?}");
-            1
-        }
-        (ShutdownReason::ClientFinished, Some(Ok(Ok(())))) => {
-            warn!("Discord client exited unexpectedly without shutdown signal.");
-            1
-        }
-        (ShutdownReason::ClientFinished, Some(Ok(Err(err)))) => {
-            error!("Discord client exited with error: {err:?}");
-            1
-        }
-        (ShutdownReason::ClientFinished, Some(Err(err))) => {
-            error!("Discord client task join error: {err:?}");
-            1
-        }
-        (ShutdownReason::ClientFinished, None) => {
-            error!("Discord client finished without join result.");
-            1
-        }
-    };
-
-    if let Some(result) = client_result {
-        if !matches!(shutdown_reason, ShutdownReason::ClientFinished) {
             match result {
-                Ok(Ok(())) => {}
+                Ok(Ok(())) => {
+                    info!("Client finished successfully");
+                    ShutdownReason::ClientFinished
+                }
                 Ok(Err(err)) => {
-                    error!("Discord client exited with error after shutdown: {err:?}");
-                    exit_code = exit_code.max(1);
+                    error!("Client error: {err:?}");
+                    ShutdownReason::ClientFinished
                 }
                 Err(err) => {
-                    error!("Discord client task join error after shutdown: {err:?}");
-                    exit_code = exit_code.max(1);
+                    error!("Client task panicked: {err:?}");
+                    ShutdownReason::ClientFinished
                 }
             }
         }
-    }
+        reason = shutdown_signal => reason,
+    };
 
-    std::process::exit(exit_code);
+    info!("Initiating graceful shutdown: {shutdown_reason:?}");
+    shard_manager.shutdown_all().await;
+
+    match shutdown_reason {
+        ShutdownReason::Signal(Ok(())) => {
+            info!("Shutdown complete");
+            Ok(())
+        }
+        ShutdownReason::Signal(Err(err)) => {
+            error!("Signal handling error: {err:?}");
+            std::process::exit(1);
+        }
+        ShutdownReason::ClientFinished => {
+            error!("Client stopped unexpectedly");
+            std::process::exit(1);
+        }
+    }
 }
