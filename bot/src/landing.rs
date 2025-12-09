@@ -95,9 +95,9 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "-# Take your time—and enjoy reading at your own pace.",
         ),
         cleanup = config.voice_cleanup_delay_seconds,
-        capacity = config.text_channel_capacity,
+        capacity = config.active_text_channel_capacity,
         archive_poll = config.archive_poll_interval_seconds,
-        archive_grace = config.archive_grace_period_seconds,
+        archive_grace = config.archive_retention_seconds,
         watchlist_limit = config.watchlist_limit,
     );
 
@@ -142,9 +142,9 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "-# どうぞ、あなたのペースで読書をお楽しみください。",
         ),
         cleanup = config.voice_cleanup_delay_seconds,
-        capacity = config.text_channel_capacity,
+        capacity = config.active_text_channel_capacity,
         archive_poll = config.archive_poll_interval_seconds,
-        archive_grace = config.archive_grace_period_seconds,
+        archive_grace = config.archive_retention_seconds,
         watchlist_limit = config.watchlist_limit,
     );
 

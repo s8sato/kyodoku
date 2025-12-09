@@ -15,7 +15,8 @@ Display channels in the following order to keep navigation consistent:
 Use the landing page to orient newcomers. When `COMMAND_INPUT_CHANNEL_ID` is
 set, the bot rewrites the first two posts in the command channel (Japanese
 first, English second) each time it logs in. The rendered text includes the
-current values of `VOICE_CLEANUP_DELAY_SECONDS`, `TEXT_CHANNEL_CAPACITY`,
-`ARCHIVE_POLL_INTERVAL_SECONDS`, `ARCHIVE_GRACE_PERIOD_SECONDS`, and
-`WATCHLIST_LIMIT`. Manual edits to those two posts will be overwritten at the
-next login; adjust the environment variables instead.
+current values of `VOICE_CLEANUP_DELAY_SECONDS`,
+`ACTIVE_TEXT_CHANNEL_CAPACITY`, `ARCHIVE_POLL_INTERVAL_SECONDS`,
+`ARCHIVE_RETENTION_SECONDS`, and `WATCHLIST_LIMIT`. Manual edits to those two
+posts will be overwritten at the next login; adjust the environment variables
+instead.

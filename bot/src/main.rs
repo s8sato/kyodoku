@@ -32,11 +32,11 @@ pub struct Config {
     pub database_url: String,
     pub redis_url: String,
     pub max_server_channels: usize,
-    pub text_channel_budget: usize,
+    pub text_channel_total_budget: usize,
     pub voice_cleanup_delay_seconds: u64,
     pub archive_poll_interval_seconds: u64,
-    pub archive_grace_period_seconds: u64,
-    pub text_channel_delete_notice_seconds: u64,
+    pub archive_retention_seconds: u64,
+    pub archive_delete_notice_lead_seconds: u64,
     pub text_channel_extension_seconds: u64,
     pub command_input_channel_id: Option<ChannelId>,
     pub text_channel_category_id: ChannelId,
@@ -44,7 +44,7 @@ pub struct Config {
     pub text_category_position_base: i64,
     pub voice_channel_category_id: ChannelId,
     pub archived_channel_category_id: ChannelId,
-    pub text_channel_capacity: usize,
+    pub active_text_channel_capacity: usize,
     pub watchlist_limit: usize,
     pub time_zone: Tz,
 }
@@ -60,7 +60,7 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(480);
-        let text_channel_budget = std::env::var("TEXT_CHANNEL_BUDGET")
+        let text_channel_total_budget = std::env::var("TEXT_CHANNEL_TOTAL_BUDGET")
             .ok()
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
@@ -75,13 +75,13 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(86_400);
-        let archive_grace_period_seconds = std::env::var("ARCHIVE_GRACE_PERIOD_SECONDS")
+        let archive_retention_seconds = std::env::var("ARCHIVE_RETENTION_SECONDS")
             .ok()
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(5_184_000);
-        let text_channel_delete_notice_seconds =
-            std::env::var("TEXT_CHANNEL_DELETE_NOTICE_SECONDS")
+        let archive_delete_notice_lead_seconds =
+            std::env::var("ARCHIVE_DELETE_NOTICE_LEAD_SECONDS")
                 .ok()
                 .and_then(|value| value.parse().ok())
                 .filter(|value| *value > 0)
@@ -91,7 +91,7 @@ impl Config {
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
             .unwrap_or(604_800);
-        let text_channel_capacity = std::env::var("TEXT_CHANNEL_CAPACITY")
+        let active_text_channel_capacity = std::env::var("ACTIVE_TEXT_CHANNEL_CAPACITY")
             .ok()
             .and_then(|value| value.parse().ok())
             .filter(|value| *value > 0)
@@ -134,11 +134,11 @@ impl Config {
             database_url,
             redis_url,
             max_server_channels,
-            text_channel_budget,
+            text_channel_total_budget,
             voice_cleanup_delay_seconds,
             archive_poll_interval_seconds,
-            archive_grace_period_seconds,
-            text_channel_delete_notice_seconds,
+            archive_retention_seconds,
+            archive_delete_notice_lead_seconds,
             text_channel_extension_seconds,
             command_input_channel_id,
             text_channel_category_id,
@@ -146,7 +146,7 @@ impl Config {
             text_category_position_base,
             voice_channel_category_id,
             archived_channel_category_id,
-            text_channel_capacity,
+            active_text_channel_capacity,
             watchlist_limit,
             time_zone,
         })

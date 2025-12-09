@@ -51,10 +51,10 @@ pub async fn enforce_channel_budgets(
         .filter(|ch| ch.kind == ChannelType::Text)
         .count()
         + reservation.new_text_channels;
-    if text_channels > state.config.text_channel_budget {
+    if text_channels > state.config.text_channel_total_budget {
         return Err(anyhow!(
             "Creating this channel would exceed the text channel budget ({}).",
-            state.config.text_channel_budget
+            state.config.text_channel_total_budget
         ));
     }
 
@@ -107,11 +107,11 @@ async fn process_guild(http: &Http, guild_id: GuildId, state: Arc<BotState>) -> 
         .collect();
     text_channels.sort_by_key(|ch| (ch.position, ch.id));
 
-    let archive_grace = Duration::from_secs(state.config.archive_grace_period_seconds);
+    let archive_grace = Duration::from_secs(state.config.archive_retention_seconds);
 
     for channel in text_channels
         .iter()
-        .skip(state.config.text_channel_capacity)
+        .skip(state.config.active_text_channel_capacity)
     {
         if let Err(err) = archive_channel(http, channel, archive_grace, state.clone()).await {
             error!("Failed to archive channel {}: {err:?}", channel.id);
@@ -190,7 +190,7 @@ async fn handle_archived_channel(
     }
 
     let now = Utc::now();
-    let notice_delta = seconds_to_timedelta(state.config.text_channel_delete_notice_seconds);
+    let notice_delta = seconds_to_timedelta(state.config.archive_delete_notice_lead_seconds);
     let notice_cutoff = record.expires_at - notice_delta;
     if record.notice_sent_at.is_none() && notice_cutoff <= now {
         send_delete_warning(http, channel, &record, state.clone()).await?;
