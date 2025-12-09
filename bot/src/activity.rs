@@ -58,11 +58,8 @@ async fn evaluate_channel(
         .await?;
     let lookback_seconds = state.config.text_activity_eval_interval_seconds;
     let voice_participants = if let Some(voice_channel_id) = voice_channel_id {
-        let member_ids = util::current_voice_member_ids(
-            ctx,
-            guild_channel.guild_id,
-            voice_channel_id,
-        );
+        let member_ids =
+            util::current_voice_member_ids(ctx, guild_channel.guild_id, voice_channel_id);
 
         for user_id in &member_ids {
             state

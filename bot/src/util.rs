@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use anyhow::Result;
+use anyhow::{Context as AnyhowContext, Result};
 use async_trait::async_trait;
 use redis::AsyncCommands;
 use serenity::all::{
@@ -17,6 +17,52 @@ use crate::BotState;
 pub const WATCH_ACTION_PREFIX: &str = "watch:";
 const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
 const READING_SESSION_ACTIVATION_THRESHOLD: usize = 1;
+const PLACEHOLDER_TOPIC: &str = "Activity score: -1.00 (placeholder)";
+
+pub async fn initialize_text_categories(ctx: &Context, state: &BotState) -> Result<()> {
+    for (idx, category_id) in state.config.text_category_ids.iter().enumerate() {
+        let guild_category = ctx
+            .http
+            .get_channel(*category_id)
+            .await?
+            .guild()
+            .context("text category must belong to a guild")?;
+        let guild_id = guild_category.guild_id;
+
+        let channels = guild_id.channels(&ctx.http).await?;
+        let existing: Vec<_> = channels
+            .values()
+            .filter(|channel| {
+                channel.kind == ChannelType::Text && channel.parent_id == Some(*category_id)
+            })
+            .collect();
+
+        let capacity = state.config.text_category_capacity;
+        if existing.len() >= capacity {
+            continue;
+        }
+
+        let missing = capacity - existing.len();
+        for offset in 0..missing {
+            let name = format!("placeholder-{}-{:02}", idx + 1, existing.len() + offset + 1);
+
+            let channel = CreateChannel::new(name)
+                .kind(ChannelType::Text)
+                .topic(PLACEHOLDER_TOPIC)
+                .category(*category_id);
+            let created = guild_id.create_channel(&ctx.http, channel).await?;
+
+            info!(
+                guild_id = %guild_id,
+                category_id = %category_id,
+                channel_id = %created.id,
+                "created placeholder text channel"
+            );
+        }
+    }
+
+    Ok(())
+}
 
 pub async fn ensure_isbn_text_channel(
     ctx: &Context,
@@ -185,11 +231,7 @@ pub async fn handle_voice_state_transition(
     if let Some(channel_id) = new {
         maybe_notify_activation(ctx.clone(), state.clone(), guild_id, channel_id).await?;
 
-        if let Some(isbn) = state
-            .store
-            .get_isbn_for_voice_channel(channel_id)
-            .await?
-        {
+        if let Some(isbn) = state.store.get_isbn_for_voice_channel(channel_id).await? {
             state
                 .store
                 .record_voice_participation(guild_id, &isbn, user_id)
