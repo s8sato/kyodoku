@@ -31,7 +31,7 @@ impl Store {
         channel_id: ChannelId,
     ) -> Result<Option<DbArchivedChannel>> {
         let record = sqlx::query_as::<_, DbArchivedChannel>(
-            "SELECT channel_id, guild_id, original_category_id, archived_at, expires_at
+            "SELECT channel_id, guild_id, original_category_id, archived_at, expires_at, notice_sent_at
              FROM archived_channels
              WHERE channel_id = $1",
         )
@@ -49,15 +49,17 @@ impl Store {
         original_category_id: ChannelId,
         archived_at: DateTime<Utc>,
         expires_at: DateTime<Utc>,
+        notice_sent_at: Option<DateTime<Utc>>,
     ) -> Result<()> {
         sqlx::query(
-            "INSERT INTO archived_channels (channel_id, guild_id, original_category_id, archived_at, expires_at, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+            "INSERT INTO archived_channels (channel_id, guild_id, original_category_id, archived_at, expires_at, notice_sent_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
              ON CONFLICT (channel_id) DO UPDATE SET
                  guild_id = EXCLUDED.guild_id,
                  original_category_id = EXCLUDED.original_category_id,
                  archived_at = EXCLUDED.archived_at,
                  expires_at = EXCLUDED.expires_at,
+                 notice_sent_at = EXCLUDED.notice_sent_at,
                  updated_at = NOW()",
         )
         .bind(channel_id.get() as i64)
@@ -65,6 +67,7 @@ impl Store {
         .bind(original_category_id.get() as i64)
         .bind(archived_at)
         .bind(expires_at)
+        .bind(notice_sent_at)
         .execute(self.pool())
         .await?;
 
@@ -76,6 +79,28 @@ impl Store {
             .bind(channel_id.get() as i64)
             .execute(self.pool())
             .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_archive_expiration(
+        &self,
+        channel_id: ChannelId,
+        expires_at: DateTime<Utc>,
+        notice_sent_at: Option<DateTime<Utc>>,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE archived_channels
+             SET expires_at = $2,
+                 notice_sent_at = $3,
+                 updated_at = NOW()
+             WHERE channel_id = $1",
+        )
+        .bind(channel_id.get() as i64)
+        .bind(expires_at)
+        .bind(notice_sent_at)
+        .execute(self.pool())
+        .await?;
 
         Ok(())
     }
@@ -232,6 +257,20 @@ impl Store {
         Ok(record.map(|(channel_id,)| ChannelId::new(channel_id as u64)))
     }
 
+    pub async fn get_text_channel_info(
+        &self,
+        channel_id: ChannelId,
+    ) -> Result<Option<(GuildId, String)>> {
+        let record: Option<(i64, String)> = sqlx::query_as(
+            "SELECT guild_id, isbn_13 FROM text_channels WHERE channel_id = $1 LIMIT 1",
+        )
+        .bind(channel_id.get() as i64)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(record.map(|(guild_id, isbn)| (GuildId::new(guild_id as u64), isbn)))
+    }
+
     pub async fn add_watch(&self, guild_id: GuildId, user_id: UserId, isbn_13: &str) -> Result<()> {
         sqlx::query(
             "INSERT INTO watchlist (guild_id, user_id, isbn_13)
@@ -324,4 +363,5 @@ pub struct DbArchivedChannel {
     pub original_category_id: i64,
     pub archived_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
+    pub notice_sent_at: Option<DateTime<Utc>>,
 }
