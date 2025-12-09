@@ -5,15 +5,12 @@ use std::time::{Duration, SystemTime};
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, TimeDelta, Utc};
 use chrono_tz::Tz;
-use serenity::all::{
-    ButtonStyle, ChannelId, ChannelType, CreateActionRow, CreateButton, CreateMessage, EditChannel,
-    GuildChannel, GuildId,
-};
+use serenity::all::{ChannelId, ChannelType, CreateMessage, EditChannel, GuildChannel, GuildId};
 use serenity::http::Http;
 use tracing::{error, info, warn};
 
 use crate::store::DbArchivedChannel;
-use crate::util::{self, EXTEND_ACTION_PREFIX};
+use crate::util;
 use crate::BotState;
 
 pub async fn run_archive_loop(http: Arc<Http>, state: Arc<BotState>) {
@@ -247,31 +244,23 @@ async fn send_delete_warning(
     state: Arc<BotState>,
 ) -> Result<()> {
     let expires_local = record.expires_at.with_timezone(&state.config.time_zone);
-    let content = format!(
-        "This channel is scheduled for deletion on {}. Use /open or Extend to keep it alive.",
-        expires_local.format("%F %T %Z")
-    );
+    let Some((guild_id, isbn)) = state.store.get_text_channel_info(channel.id).await? else {
+        return Ok(());
+    };
 
-    let extend_button = CreateButton::new(format!("{}{}", EXTEND_ACTION_PREFIX, channel.id.get()))
-        .style(ButtonStyle::Primary)
-        .label("Extend");
+    let channel_notice = format!(
+        "This channel is scheduled for deletion on {}. Run /open {} to move it back to the active category before it is removed.",
+        expires_local.format("%F %T %Z"),
+        isbn
+    );
 
     if let Err(err) = channel
         .id
-        .send_message(
-            http,
-            CreateMessage::new()
-                .content(&content)
-                .components(vec![CreateActionRow::Buttons(vec![extend_button.clone()])]),
-        )
+        .send_message(http, CreateMessage::new().content(&channel_notice))
         .await
     {
         warn!("Failed to post delete warning to {}: {err:?}", channel.id);
     }
-
-    let Some((guild_id, isbn)) = state.store.get_text_channel_info(channel.id).await? else {
-        return Ok(());
-    };
 
     let watchers = state.store.list_watchers(guild_id, &isbn).await?;
     if watchers.is_empty() {
@@ -290,15 +279,12 @@ async fn send_delete_warning(
     };
 
     let dm_content = format!(
-        "{entry} is scheduled for deletion on {}. Tap Extend to keep it.",
-        expires_local.format("%F %T %Z")
+        "{entry} is scheduled for deletion on {}. Run /open {isbn} in the server to reopen the channel before removal.\n{channel_link}",
+        expires_local.format("%F %T %Z"),
+        channel_link = channel_url(guild_id, channel.id),
     );
 
-    let mut buttons = vec![extend_button];
-    buttons
-        .push(CreateButton::new_link(channel_url(guild_id, channel.id)).label("Open Text Channel"));
-
-    let components = vec![CreateActionRow::Buttons(buttons)];
+    let components = Vec::new();
     for watcher in watchers {
         if let Err(err) = util::send_dm(http, watcher, &dm_content, components.clone()).await {
             warn!(
@@ -309,55 +295,6 @@ async fn send_delete_warning(
     }
 
     Ok(())
-}
-
-pub async fn extend_archived_channel(
-    http: &Http,
-    state: Arc<BotState>,
-    channel_id: ChannelId,
-) -> Result<String> {
-    let Some(mut record) = state.store.get_archived_channel(channel_id).await? else {
-        return Err(anyhow!("This channel is not scheduled for deletion."));
-    };
-
-    let extension = seconds_to_timedelta(state.config.text_channel_extension_seconds);
-    let now = Utc::now();
-    let new_expiration = (record.expires_at).max(now + extension);
-    record.expires_at = new_expiration;
-    record.notice_sent_at = None;
-
-    state
-        .store
-        .update_archive_expiration(channel_id, record.expires_at, record.notice_sent_at)
-        .await?;
-
-    if let Ok(channel) = http.get_channel(channel_id).await {
-        if let Some(guild_channel) = channel.guild() {
-            let topic = format_archive_topic(
-                record.archived_at.into(),
-                record.expires_at,
-                state.config.time_zone,
-            );
-            if let Err(err) = guild_channel
-                .id
-                .edit(http, EditChannel::new().topic(topic))
-                .await
-            {
-                warn!(
-                    "Failed to refresh topic after extension for {}: {err:?}",
-                    channel_id
-                );
-            }
-        }
-    }
-
-    Ok(format!(
-        "Extended deletion deadline to {}.",
-        record
-            .expires_at
-            .with_timezone(&state.config.time_zone)
-            .format("%F %T %Z")
-    ))
 }
 
 async fn ensure_archived_record(
@@ -404,7 +341,7 @@ pub fn format_archive_topic(
     let expires_local = expires_at.with_timezone(&time_zone);
 
     format!(
-        "Archived on {}. Scheduled for deletion on {} unless reopened or extended.",
+        "Archived on {}. Scheduled for deletion on {} unless reopened.",
         archived_local.format("%F %T %Z"),
         expires_local.format("%F %T %Z")
     )
