@@ -249,7 +249,7 @@ async fn send_delete_warning(
     };
 
     let channel_notice = format!(
-        "This channel is scheduled for deletion on {}. Run /open {} to move it back to the active category before it is removed.",
+        "This channel is scheduled for deletion on {}. Run /open code:{} to move it back to the active category before it is removed.",
         expires_local.format("%F %T %Z"),
         isbn
     );
