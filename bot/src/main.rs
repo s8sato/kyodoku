@@ -20,6 +20,7 @@ use serenity::prelude::TypeMapKey;
 use songbird::SerenityInit;
 use tokio::signal;
 use tokio::task::JoinError;
+use tokio::time::{sleep, Duration};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
@@ -372,8 +373,8 @@ async fn main() -> Result<()> {
         .init();
 
     let config = Config::from_env()?;
-    let store = Store::connect(&config.database_url).await?;
-    let redis = RedisClient::open(config.redis_url.as_str())?;
+    let store = connect_store_with_retry(&config.database_url).await?;
+    let redis = connect_redis_with_retry(&config.redis_url).await?;
     let http_client = reqwest::Client::builder()
         .user_agent("kyodoku-bot/0.1")
         .build()?;
@@ -462,4 +463,56 @@ async fn main() -> Result<()> {
     }
 
     std::process::exit(exit_code);
+}
+
+const CONNECTION_RETRY_ATTEMPTS: usize = 5;
+const CONNECTION_RETRY_BACKOFF_SECONDS: u64 = 2;
+
+async fn connect_store_with_retry(database_url: &str) -> Result<Store> {
+    let mut attempt = 1;
+    loop {
+        match Store::connect(database_url).await {
+            Ok(store) => return Ok(store),
+            Err(err) if attempt < CONNECTION_RETRY_ATTEMPTS => {
+                let delay = Duration::from_secs(CONNECTION_RETRY_BACKOFF_SECONDS * attempt as u64);
+                warn!(
+                    attempt,
+                    delay_secs = delay.as_secs(),
+                    "Failed to connect to PostgreSQL: {err:?}; retrying"
+                );
+                sleep(delay).await;
+                attempt += 1;
+            }
+            Err(err) => {
+                return Err(anyhow!(
+                    "Failed to connect to PostgreSQL after {attempt} attempts: {err:?}"
+                ))
+            }
+        }
+    }
+}
+
+async fn connect_redis_with_retry(redis_url: &str) -> Result<RedisClient> {
+    let mut attempt = 1;
+    loop {
+        let client = RedisClient::open(redis_url)?;
+        match client.get_async_connection().await {
+            Ok(_) => return Ok(client),
+            Err(err) if attempt < CONNECTION_RETRY_ATTEMPTS => {
+                let delay = Duration::from_secs(CONNECTION_RETRY_BACKOFF_SECONDS * attempt as u64);
+                warn!(
+                    attempt,
+                    delay_secs = delay.as_secs(),
+                    "Failed to connect to Redis: {err:?}; retrying"
+                );
+                sleep(delay).await;
+                attempt += 1;
+            }
+            Err(err) => {
+                return Err(anyhow!(
+                    "Failed to connect to Redis after {attempt} attempts: {err:?}"
+                ))
+            }
+        }
+    }
 }
