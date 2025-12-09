@@ -279,7 +279,7 @@ async fn send_delete_warning(
     };
 
     let dm_content = format!(
-        "{entry} is scheduled for deletion on {}. Run /open {isbn} in the server to reopen the channel before removal.\n{channel_link}",
+        "{entry} is scheduled for deletion on {}. Run /open code:{isbn} in the server to reopen the channel before removal.\n{channel_link}",
         expires_local.format("%F %T %Z"),
         channel_link = channel_url(guild_id, channel.id),
     );
