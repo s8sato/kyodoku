@@ -167,14 +167,22 @@ async fn fetch_existing_landing_messages(
 
     let mut landing_messages: std::collections::HashMap<&'static str, Vec<Message>> =
         std::collections::HashMap::new();
+    let mut current_lang: Option<&'static str> = None;
+
     for message in messages
         .into_iter()
         .filter(|message| message.author.id == bot_user_id)
     {
-        if message.content.starts_with(JA_HEADER) {
-            landing_messages.entry(JA_HEADER).or_default().push(message);
-        } else if message.content.starts_with(EN_HEADER) {
-            landing_messages.entry(EN_HEADER).or_default().push(message);
+        let content = message.content.as_str();
+
+        if content.starts_with(JA_HEADER) {
+            current_lang = Some(JA_HEADER);
+        } else if content.starts_with(EN_HEADER) {
+            current_lang = Some(EN_HEADER);
+        }
+
+        if let Some(lang) = current_lang {
+            landing_messages.entry(lang).or_default().push(message);
         }
     }
 
