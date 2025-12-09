@@ -1,5 +1,5 @@
 use anyhow::Result;
-use serenity::all::{ChannelId, EditMessage, Message, UserId};
+use serenity::all::{ChannelId, EditMessage, Message};
 use serenity::builder::GetMessages;
 use serenity::prelude::CacheHttp;
 use tracing::info;
@@ -10,33 +10,17 @@ const EN_HEADER: &str = "# Welcome to the Shared Reading Server :books:";
 const JA_HEADER: &str = "# ようこそ、共読サーバーへ :books:";
 const MAX_MESSAGE_LENGTH: usize = 1900;
 
-pub async fn refresh_landing_posts(
-    ctx: &serenity::all::Context,
-    config: &Config,
-    bot_user_id: UserId,
-) -> Result<()> {
+pub async fn refresh_landing_posts(ctx: &serenity::all::Context, config: &Config) -> Result<()> {
     let Some(channel_id) = config.command_input_channel_id else {
         return Ok(());
     };
 
-    let desired_posts = desired_posts(config);
-    let mut landing_messages =
-        fetch_existing_landing_messages(ctx, channel_id, bot_user_id).await?;
+    clear_command_channel(ctx, channel_id).await?;
 
-    let japanese = ensure_messages(
-        ctx,
-        channel_id,
-        landing_messages.remove(JA_HEADER).unwrap_or_default(),
-        &desired_posts.0,
-    )
-    .await?;
-    let english = ensure_messages(
-        ctx,
-        channel_id,
-        landing_messages.remove(EN_HEADER).unwrap_or_default(),
-        &desired_posts.1,
-    )
-    .await?;
+    let desired_posts = desired_posts(config);
+
+    let japanese = ensure_messages(ctx, channel_id, Vec::new(), &desired_posts.0).await?;
+    let english = ensure_messages(ctx, channel_id, Vec::new(), &desired_posts.1).await?;
 
     info!(
         "refreshed landing posts (ja: {:?}, en: {:?})",
@@ -154,39 +138,24 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
     )
 }
 
-async fn fetch_existing_landing_messages(
-    ctx: &serenity::all::Context,
-    channel_id: ChannelId,
-    bot_user_id: UserId,
-) -> Result<std::collections::HashMap<&'static str, Vec<Message>>> {
-    let mut messages = channel_id
-        .messages(ctx.http(), GetMessages::new().limit(50))
-        .await?;
+async fn clear_command_channel(ctx: &serenity::all::Context, channel_id: ChannelId) -> Result<()> {
+    loop {
+        let messages = channel_id
+            .messages(ctx.http(), GetMessages::new().limit(100))
+            .await?;
 
-    messages.sort_by_key(|message| message.id);
-
-    let mut landing_messages: std::collections::HashMap<&'static str, Vec<Message>> =
-        std::collections::HashMap::new();
-    let mut current_lang: Option<&'static str> = None;
-
-    for message in messages
-        .into_iter()
-        .filter(|message| message.author.id == bot_user_id)
-    {
-        let content = message.content.as_str();
-
-        if content.starts_with(JA_HEADER) {
-            current_lang = Some(JA_HEADER);
-        } else if content.starts_with(EN_HEADER) {
-            current_lang = Some(EN_HEADER);
+        if messages.is_empty() {
+            break;
         }
 
-        if let Some(lang) = current_lang {
-            landing_messages.entry(lang).or_default().push(message);
+        for message in messages {
+            message.delete(ctx.http()).await?;
         }
     }
 
-    Ok(landing_messages)
+    info!("cleared command channel before posting landing messages");
+
+    Ok(())
 }
 
 async fn ensure_messages(
