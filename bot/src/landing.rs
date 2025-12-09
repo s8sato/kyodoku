@@ -75,10 +75,11 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "**User Settings → Content & Social → Direct Messages → Allow DMs from other members in this server**\n",
             "Or:\n",
             "Right-click server name → **Privacy Settings → Allow DMs from other members in this server**\n\n",
-            "## :file_cabinet: Channel Archival\n",
-            "- Up to **{capacity}** text channels remain active; older ones move to the archive category\n",
-            "- Archives are checked every **{archive_poll} seconds**\n",
-            "- Archived channels are deleted after **{archive_grace} seconds** unless activity returns\n\n",
+            "## :file_cabinet: Text Channel Ladder\n",
+            "- New ISBN channels start at the top of category 9 (each category holds 50 channels)\n",
+            "- Activity scores refresh every **{eval_interval} seconds** and are written to channel topics\n",
+            "- The bottom **{swap_count}** channels in category n swap with the top **{swap_count}** channels in category n+1 (n = 1..8)\n",
+            "- The bottom **{prune_count}** channels in category 9 are deleted each cycle\n\n",
             "## :zipper_mouth: Spoiler-Friendly Posts\n",
             "When you want to share impressions without revealing plot points, mark spoilers with `||double bars||`:\n",
             "```\n",
@@ -95,9 +96,9 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "-# Take your time—and enjoy reading at your own pace.",
         ),
         cleanup = config.voice_cleanup_delay_seconds,
-        capacity = config.text_channel_capacity,
-        archive_poll = config.archive_poll_interval_seconds,
-        archive_grace = config.archive_grace_period_seconds,
+        eval_interval = config.text_activity_eval_interval_seconds,
+        swap_count = config.text_category_swap_count,
+        prune_count = config.text_category_prune_count,
         watchlist_limit = config.watchlist_limit,
     );
 
@@ -122,10 +123,11 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "**ユーザー設定 → コンテンツ＆ソーシャル → ダイレクトメッセージ → このサーバーのメンバーからのDMを許可**\n",
             "または：\n",
             "サーバー名を右クリック → **プライバシー設定 → このサーバーのメンバーからのDMを許可**\n\n",
-            "## :file_cabinet: アーカイブに関する注意\n",
-            "- **{capacity}** 件までテキストチャンネルを保持し、それ以上はアーカイブカテゴリへ移動します\n",
-            "- **{archive_poll} 秒** ごとにアーカイブ対象を確認します\n",
-            "- アーカイブ済みチャンネルは活動がなければ **{archive_grace} 秒** 後に削除されます\n\n",
+            "## :file_cabinet: テキストチャンネルの階層\n",
+            "- 新しいISBNチャンネルはカテゴリ9の先頭に配置されます（各カテゴリの上限は50件）\n",
+            "- アクティビティスコアは **{eval_interval} 秒** ごとに更新され、トピックに明示されます\n",
+            "- カテゴリnの下位 **{swap_count}** 件とカテゴリn+1の上位 **{swap_count}** 件を入れ替えます（n = 1〜8）\n",
+            "- カテゴリ9の下位 **{prune_count}** 件は各サイクルで削除されます\n\n",
             "## :zipper_mouth: ネタバレへの配慮\n",
             "文芸書などでネタバレを控えながら投稿したい場合、ネタバレ部分をスポイラーとしてマークできます：\n",
             "```\n",
@@ -142,9 +144,9 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "-# どうぞ、あなたのペースで読書をお楽しみください。",
         ),
         cleanup = config.voice_cleanup_delay_seconds,
-        capacity = config.text_channel_capacity,
-        archive_poll = config.archive_poll_interval_seconds,
-        archive_grace = config.archive_grace_period_seconds,
+        eval_interval = config.text_activity_eval_interval_seconds,
+        swap_count = config.text_category_swap_count,
+        prune_count = config.text_category_prune_count,
         watchlist_limit = config.watchlist_limit,
     );
 
@@ -296,7 +298,10 @@ mod tests {
     use super::*;
 
     fn repeat_text(text: &str, count: usize) -> String {
-        std::iter::repeat(text).take(count).collect::<Vec<_>>().join("")
+        std::iter::repeat(text)
+            .take(count)
+            .collect::<Vec<_>>()
+            .join("")
     }
 
     #[test]

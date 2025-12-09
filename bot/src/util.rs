@@ -27,6 +27,8 @@ pub async fn ensure_isbn_text_channel(
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let desired_name = truncate_name(&channel_name);
     let desired_topic = format!("Discussion channel for {}", metadata.display_title());
+    let text_categories = state.config.text_category_ids;
+    let default_category = text_categories[8];
 
     if let Some(channel_id) = state
         .store
@@ -48,11 +50,16 @@ pub async fn ensure_isbn_text_channel(
                     needs_update = true;
                 }
 
-                let was_archived =
-                    guild_channel.parent_id == Some(state.config.archived_channel_category_id);
+                let current_parent = guild_channel.parent_id;
+                let parent_in_ladder = current_parent
+                    .map(|parent| text_categories.contains(&parent))
+                    .unwrap_or(false);
+                let target_parent = current_parent
+                    .filter(|_| parent_in_ladder)
+                    .unwrap_or(default_category);
 
-                if guild_channel.parent_id != Some(state.config.text_channel_category_id) {
-                    edits = edits.category(state.config.text_channel_category_id);
+                if guild_channel.parent_id != Some(target_parent) {
+                    edits = edits.category(target_parent);
                     needs_update = true;
                 }
 
@@ -60,12 +67,7 @@ pub async fn ensure_isbn_text_channel(
                     guild_channel.id.edit(&ctx.http, edits).await?;
                 }
 
-                move_channel_to_top(ctx, guild_channel.id, state.config.text_channel_category_id)
-                    .await?;
-
-                if was_archived {
-                    state.store.clear_archived_channel(guild_channel.id).await?;
-                }
+                move_channel_to_top(ctx, guild_channel.id, target_parent).await?;
 
                 return Ok(guild_channel.id);
             }
@@ -75,10 +77,10 @@ pub async fn ensure_isbn_text_channel(
     let channel = CreateChannel::new(desired_name)
         .kind(ChannelType::Text)
         .topic(desired_topic)
-        .category(state.config.text_channel_category_id);
+        .category(default_category);
     let channel = guild_id.create_channel(&ctx.http, channel).await?;
 
-    move_channel_to_top(ctx, channel.id, state.config.text_channel_category_id).await?;
+    move_channel_to_top(ctx, channel.id, default_category).await?;
 
     let components = vec![CreateActionRow::Buttons(vec![CreateButton::new(format!(
         "{WATCH_ACTION_PREFIX}add:{}",
