@@ -42,7 +42,7 @@ The project follows a *spec-first* approach — this document serves as the sour
   * `add <code>` — subscribe to notifications when a new session starts.
   * `remove <code>` — unsubscribe from that ISBN.
   * `list` — view all watched ISBNs.
-* **Limits:** `WATCHLIST_LIMIT` (default: **30**) caps how many ISBNs a user can watch per guild. Attempts to exceed the cap
+* **Limits:** `WATCHLIST_LIMIT` (default: **30**) caps how many ISBNs a user can watch within the configured guild. Attempts to exceed the cap
   return an error.
 
 ---
@@ -52,10 +52,11 @@ The project follows a *spec-first* approach — this document serves as the sour
 | Table            | Description                                                     |
 | ---------------- | --------------------------------------------------------------- |
 | `books`           | Stores ISBN metadata (title, subtitle, authors, source)         |
-| `guilds` | Per-server configuration (notification channel) |
-| `text_channels`   | Mapping of guild × ISBN to text channel ID                      |
-| `watchlist`      | User and guild watch subscriptions                              |
+| `text_channels`   | Mapping of the configured guild × ISBN to text channel ID       |
+| `watchlist`      | User watch subscriptions scoped to the configured guild         |
 | `voice_channels` | Records of each active ISBN voice session                       |
+
+Guild-specific configuration (e.g., target guild ID, category placements) is supplied via environment variables rather than a persisted `guilds` table.
 
 ---
 
@@ -106,6 +107,7 @@ The project follows a *spec-first* approach — this document serves as the sour
   * Delete the bottom `TEXT_CATEGORY_PRUNE_COUNT` channels in category 9 permanently.
 
 * **Environment variables**
+* `GUILD_ID`: the single Discord guild the bot is allowed to operate in.
 * `TEXT_CATEGORY_1_ID` … `TEXT_CATEGORY_9_ID`: IDs for consecutively configured text categories (at least one required).
 * `TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS`: cadence for evaluating scores.
 * `TEXT_ACTIVITY_PRESENCE_FACTOR`: multiplier applied to unique voice participants when computing text activity scores (default: **2.0**).

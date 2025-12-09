@@ -20,6 +20,19 @@ pub struct InteractionReply {
     pub components: Vec<CreateActionRow>,
 }
 
+fn require_home_guild(guild_id: Option<GuildId>, state: &BotState) -> Result<GuildId> {
+    let guild_id = guild_id.context("Command must be used within a guild")?;
+
+    if guild_id != state.config.home_guild_id {
+        return Err(anyhow!(
+            "This bot is restricted to its configured guild ({}).",
+            state.config.home_guild_id
+        ));
+    }
+
+    Ok(guild_id)
+}
+
 pub async fn register_commands(http: &serenity::http::Http) -> Result<()> {
     let commands = vec![build_open_command(), build_watch_command()];
     serenity::all::Command::set_global_commands(http, commands).await?;
@@ -124,9 +137,7 @@ async fn handle_open(
     command: &CommandInteraction,
     state: Arc<BotState>,
 ) -> Result<InteractionReply> {
-    let guild_id = command
-        .guild_id
-        .context("Command must be used within a guild")?;
+    let guild_id = require_home_guild(command.guild_id, &state)?;
     let code = require_string_option(&command.data.options, "code")?;
 
     let normalized = isbn::normalize(code)?;
@@ -175,9 +186,7 @@ pub async fn handle_component_interaction(
                 return Ok(());
             };
 
-            let guild_id = component
-                .guild_id
-                .context("Component interaction must be in a guild")?;
+            let guild_id = require_home_guild(component.guild_id, &state)?;
 
             let existing_watches: HashSet<String> = state
                 .store
@@ -240,9 +249,7 @@ pub async fn handle_component_interaction(
         "remove" => {
             let (guild_id, isbn_13, update_watchlist) = match (parts.next(), parts.next()) {
                 (Some(isbn_13), None) => (
-                    component
-                        .guild_id
-                        .context("Component interaction must be in a guild")?,
+                    require_home_guild(component.guild_id, &state)?,
                     isbn_13,
                     true,
                 ),
@@ -252,7 +259,7 @@ pub async fn handle_component_interaction(
                         .or_else(|| guild_raw.parse::<u64>().ok().map(GuildId::new))
                         .context("Missing guild for watch remove action")?;
 
-                    (guild_id, isbn_13, false)
+                    (require_home_guild(Some(guild_id), &state)?, isbn_13, false)
                 }
                 _ => return Ok(()),
             };
@@ -311,9 +318,7 @@ async fn handle_watch(
     command: &CommandInteraction,
     state: Arc<BotState>,
 ) -> Result<InteractionReply> {
-    let guild_id = command
-        .guild_id
-        .context("Command must be used within a guild")?;
+    let guild_id = require_home_guild(command.guild_id, &state)?;
     let user_id = command.user.id;
     let Some(option) = command.data.options.first() else {
         return Err(anyhow!("Missing watch subcommand"));
