@@ -323,115 +323,105 @@ async fn handle_watch(
     };
 
     match option.name.as_str() {
-        "add" => {
-            let codes = parse_codes(require_string_option(sub_options, "codes")?);
-            if codes.is_empty() {
-                return Err(anyhow!("At least one ISBN code is required"));
-            }
-
-            let mut added = Vec::new();
-            let mut seen = HashSet::new();
-            let mut existing_watches: HashSet<String> = state
-                .store
-                .list_watches(guild_id, user_id)
-                .await?
-                .into_iter()
-                .collect();
-            let mut remaining_slots = state
-                .config
-                .watchlist_limit
-                .saturating_sub(existing_watches.len());
-
-            for code in codes {
-                let normalized = isbn::normalize(code)?;
-                if !seen.insert(normalized.isbn_13.clone()) {
-                    continue;
-                }
-
-                if existing_watches.contains(&normalized.isbn_13) {
-                    continue;
-                }
-
-                if remaining_slots == 0 {
-                    return Err(anyhow!(format!(
-                        "You’ve reached the watchlist limit ({} books).",
-                        state.config.watchlist_limit
-                    )));
-                }
-
-                let metadata = isbn::lookup_metadata(&state.http_client, &normalized).await?;
-                state.store.upsert_isbn(&metadata).await?;
-                state
-                    .store
-                    .add_watch(guild_id, user_id, &metadata.isbn_13)
-                    .await?;
-
-                existing_watches.insert(metadata.isbn_13.clone());
-                remaining_slots = remaining_slots.saturating_sub(1);
-
-                added.push(format_entry(
-                    &metadata.title,
-                    metadata.subtitle.as_deref(),
-                    &metadata.isbn_13,
-                ));
-            }
-
-            if added.is_empty() {
-                Ok(InteractionReply {
-                    content: "No new ISBNs added to your watchlist.".to_string(),
-                    ..Default::default()
-                })
-            } else {
-                Ok(InteractionReply {
-                    content: format!("Added to your watchlist:\n{}", added.join("\n")),
-                    ..Default::default()
-                })
-            }
-        }
-        "remove" => {
-            let codes = parse_codes(require_string_option(sub_options, "codes")?);
-            if codes.is_empty() {
-                return Err(anyhow!("At least one ISBN code is required"));
-            }
-
-            let mut removed = Vec::new();
-            let mut seen = HashSet::new();
-
-            for code in codes {
-                let normalized = isbn::normalize(code)?;
-                if !seen.insert(normalized.isbn_13.clone()) {
-                    continue;
-                }
-
-                let entry = match state.store.fetch_isbn(&normalized.isbn_13).await? {
-                    Some(record) => {
-                        format_entry(&record.title, record.subtitle.as_deref(), &record.isbn_13)
-                    }
-                    None => format_entry(&normalized.isbn_13, None, &normalized.isbn_13),
-                };
-
-                state
-                    .store
-                    .remove_watch(guild_id, user_id, &normalized.isbn_13)
-                    .await?;
-
-                removed.push(entry);
-            }
-
-            let content = if removed.is_empty() {
-                "No ISBNs removed from your watchlist.".to_string()
-            } else {
-                format!("Removed from your watchlist:\n{}", removed.join("\n"))
-            };
-
-            Ok(InteractionReply {
-                content,
-                ..Default::default()
-            })
-        }
+        "add" => handle_watch_add(state, guild_id, user_id, sub_options).await,
+        "remove" => handle_watch_remove(state, guild_id, user_id, sub_options).await,
         "list" => build_watchlist_reply(&state, guild_id, user_id).await,
         other => Err(anyhow!("Unknown watch action: {other}")),
     }
+}
+
+async fn handle_watch_add(
+    state: Arc<BotState>,
+    guild_id: serenity::model::id::GuildId,
+    user_id: serenity::model::id::UserId,
+    sub_options: &[CommandDataOption],
+) -> Result<InteractionReply> {
+    let codes = extract_normalized_codes(sub_options)?;
+
+    let mut added = Vec::new();
+    let mut existing_watches: HashSet<String> = state
+        .store
+        .list_watches(guild_id, user_id)
+        .await?
+        .into_iter()
+        .collect();
+    let mut remaining_slots = state
+        .config
+        .watchlist_limit
+        .saturating_sub(existing_watches.len());
+
+    for normalized in codes {
+        let isbn_13 = normalized.isbn_13.clone();
+        if existing_watches.contains(&isbn_13) {
+            continue;
+        }
+
+        if remaining_slots == 0 {
+            return Err(anyhow!(format!(
+                "You’ve reached the watchlist limit ({} books).",
+                state.config.watchlist_limit
+            )));
+        }
+
+        let metadata = isbn::lookup_metadata(&state.http_client, &normalized).await?;
+        state.store.upsert_isbn(&metadata).await?;
+        state
+            .store
+            .add_watch(guild_id, user_id, &metadata.isbn_13)
+            .await?;
+
+        existing_watches.insert(metadata.isbn_13.clone());
+        remaining_slots = remaining_slots.saturating_sub(1);
+
+        added.push(format_entry(
+            &metadata.title,
+            metadata.subtitle.as_deref(),
+            &metadata.isbn_13,
+        ));
+    }
+
+    if added.is_empty() {
+        Ok(InteractionReply {
+            content: "No new ISBNs added to your watchlist.".to_string(),
+            ..Default::default()
+        })
+    } else {
+        Ok(InteractionReply {
+            content: format!("Added to your watchlist:\n{}", added.join("\n")),
+            ..Default::default()
+        })
+    }
+}
+
+async fn handle_watch_remove(
+    state: Arc<BotState>,
+    guild_id: serenity::model::id::GuildId,
+    user_id: serenity::model::id::UserId,
+    sub_options: &[CommandDataOption],
+) -> Result<InteractionReply> {
+    let codes = extract_normalized_codes(sub_options)?;
+    let mut removed = Vec::new();
+
+    for normalized in codes {
+        let isbn_13 = normalized.isbn_13;
+
+        removed.push(resolve_watch_entry(&state, &isbn_13).await?);
+        state
+            .store
+            .remove_watch(guild_id, user_id, &isbn_13)
+            .await?;
+    }
+
+    let content = if removed.is_empty() {
+        "No ISBNs removed from your watchlist.".to_string()
+    } else {
+        format!("Removed from your watchlist:\n{}", removed.join("\n"))
+    };
+
+    Ok(InteractionReply {
+        content,
+        ..Default::default()
+    })
 }
 
 fn require_string_option<'a>(options: &'a [CommandDataOption], name: &str) -> Result<&'a str> {
@@ -464,6 +454,32 @@ fn format_entry(title: &str, subtitle: Option<&str>, isbn_13: &str) -> String {
     format!("- `{}` **{}**", isbn_13, display_title(title, subtitle))
 }
 
+fn extract_normalized_codes(options: &[CommandDataOption]) -> Result<Vec<isbn::NormalizedIsbn>> {
+    let codes = parse_codes(require_string_option(options, "codes")?);
+
+    if codes.is_empty() {
+        return Err(anyhow!("At least one ISBN code is required"));
+    }
+
+    let mut normalized = Vec::new();
+    let mut seen = HashSet::new();
+    for code in codes {
+        let normalized_isbn = isbn::normalize(code)?;
+        if seen.insert(normalized_isbn.isbn_13.clone()) {
+            normalized.push(normalized_isbn);
+        }
+    }
+
+    Ok(normalized)
+}
+
+async fn resolve_watch_entry(state: &BotState, isbn_13: &str) -> Result<String> {
+    Ok(match state.store.fetch_isbn(isbn_13).await? {
+        Some(record) => format_entry(&record.title, record.subtitle.as_deref(), &record.isbn_13),
+        None => format_entry(isbn_13, None, isbn_13),
+    })
+}
+
 async fn build_watchlist_reply(
     state: &BotState,
     guild_id: serenity::model::id::GuildId,
@@ -479,12 +495,7 @@ async fn build_watchlist_reply(
 
     let mut entries = Vec::new();
     for isbn_13 in watches {
-        let entry = match state.store.fetch_isbn(&isbn_13).await? {
-            Some(record) => {
-                format_entry(&record.title, record.subtitle.as_deref(), &record.isbn_13)
-            }
-            None => format_entry(&isbn_13, None, &isbn_13),
-        };
+        let entry = resolve_watch_entry(state, &isbn_13).await?;
 
         entries.push(entry);
     }
