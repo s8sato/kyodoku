@@ -180,6 +180,48 @@ impl Store {
         Ok(records)
     }
 
+    pub async fn record_voice_participation(
+        &self,
+        guild_id: GuildId,
+        isbn_13: &str,
+        user_id: UserId,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO voice_participants (guild_id, isbn_13, user_id, last_seen, created_at, updated_at)
+             VALUES ($1, $2, $3, NOW(), NOW(), NOW())
+             ON CONFLICT (guild_id, isbn_13, user_id) DO UPDATE SET
+                 last_seen = NOW(),
+                 updated_at = NOW()",
+        )
+        .bind(guild_id.get() as i64)
+        .bind(isbn_13)
+        .bind(user_id.get() as i64)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn count_recent_voice_participants(
+        &self,
+        guild_id: GuildId,
+        isbn_13: &str,
+        lookback_seconds: u64,
+    ) -> Result<usize> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM voice_participants
+             WHERE guild_id = $1 AND isbn_13 = $2
+             AND last_seen >= NOW() - make_interval(secs => $3::double precision)",
+        )
+        .bind(guild_id.get() as i64)
+        .bind(isbn_13)
+        .bind(lookback_seconds as f64)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(count.max(0) as usize)
+    }
+
     pub async fn list_watcher_counts(&self) -> Result<HashMap<(GuildId, String), usize>> {
         let records = sqlx::query_as::<_, (i64, String, i64)>(
             "SELECT guild_id, isbn_13, COUNT(*) as watcher_count FROM watchlist GROUP BY guild_id, isbn_13",

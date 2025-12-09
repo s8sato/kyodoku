@@ -99,6 +99,9 @@ The project follows a *spec-first* approach — this document serves as the sour
 * **Periodic activity evaluation** (interval controlled by `TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS`)
 * Each channel is scored via the configured formula; the latest score and breakdown are written to the channel topic.
   * `activity_score = watchlist_count + (unique_voice_participants × TEXT_ACTIVITY_PRESENCE_FACTOR)`
+  * `unique_voice_participants` counts distinct members who joined the book's voice channel during the most recent
+    `TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS` window (participants accumulate across the window, even if they leave before
+    scoring runs).
   * For categories 1 through 8, swap the bottom `TEXT_CATEGORY_SWAP_COUNT` channels in category *n* with the top `TEXT_CATEGORY_SWAP_COUNT` channels in category *n+1*.
   * Delete the bottom `TEXT_CATEGORY_PRUNE_COUNT` channels in category 9 permanently.
 

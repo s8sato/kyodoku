@@ -174,6 +174,7 @@ pub async fn handle_voice_state_transition(
     ctx: &Context,
     state: Arc<BotState>,
     guild_id: GuildId,
+    user_id: UserId,
     old: Option<ChannelId>,
     new: Option<ChannelId>,
 ) -> Result<()> {
@@ -183,6 +184,17 @@ pub async fn handle_voice_state_transition(
 
     if let Some(channel_id) = new {
         maybe_notify_activation(ctx.clone(), state.clone(), guild_id, channel_id).await?;
+
+        if let Some(isbn) = state
+            .store
+            .get_isbn_for_voice_channel(channel_id)
+            .await?
+        {
+            state
+                .store
+                .record_voice_participation(guild_id, &isbn, user_id)
+                .await?;
+        }
     }
 
     Ok(())
@@ -308,14 +320,23 @@ async fn move_channel_to_top(
 }
 
 pub fn current_voice_members(ctx: &Context, guild_id: GuildId, channel_id: ChannelId) -> usize {
+    current_voice_member_ids(ctx, guild_id, channel_id).len()
+}
+
+pub fn current_voice_member_ids(
+    ctx: &Context,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Vec<UserId> {
     if let Some(guild) = ctx.cache.guild(guild_id) {
         guild
             .voice_states
             .values()
             .filter(|state| state.channel_id == Some(channel_id))
-            .count()
+            .map(|state| state.user_id)
+            .collect()
     } else {
-        0
+        Vec::new()
     }
 }
 

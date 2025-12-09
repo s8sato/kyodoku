@@ -56,9 +56,32 @@ async fn evaluate_channel(
         .store
         .get_active_voice_session(guild_channel.guild_id, &channel.isbn_13)
         .await?;
-    let voice_participants = voice_channel_id
-        .map(|voice_ch| util::current_voice_members(ctx, guild_channel.guild_id, voice_ch))
-        .unwrap_or(0);
+    let lookback_seconds = state.config.text_activity_eval_interval_seconds;
+    let voice_participants = if let Some(voice_channel_id) = voice_channel_id {
+        let member_ids = util::current_voice_member_ids(
+            ctx,
+            guild_channel.guild_id,
+            voice_channel_id,
+        );
+
+        for user_id in &member_ids {
+            state
+                .store
+                .record_voice_participation(guild_channel.guild_id, &channel.isbn_13, *user_id)
+                .await?;
+        }
+
+        state
+            .store
+            .count_recent_voice_participants(
+                guild_channel.guild_id,
+                &channel.isbn_13,
+                lookback_seconds,
+            )
+            .await?
+    } else {
+        0
+    };
 
     let watcher_key = (guild_channel.guild_id, channel.isbn_13.clone());
     let watch_count = watcher_counts.get(&watcher_key).copied().unwrap_or(0);
@@ -67,8 +90,8 @@ async fn evaluate_channel(
     let score = watch_count as f64 + (voice_participants as f64 * presence_factor);
 
     let desired_topic = format!(
-        "Activity score: {:.2} (watchers: {}, voice participants: {}, presence factor: {:.2})",
-        score, watch_count, voice_participants, presence_factor
+        "Activity score: {:.2} (watchers: {}, unique voice participants (last {}s): {}, presence factor: {:.2})",
+        score, watch_count, lookback_seconds, voice_participants, presence_factor
     );
 
     if guild_channel.topic.as_deref() != Some(desired_topic.as_str()) {
