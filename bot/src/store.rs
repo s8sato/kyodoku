@@ -180,6 +180,15 @@ impl Store {
         Ok(records)
     }
 
+    pub async fn delete_text_channel(&self, channel_id: ChannelId) -> Result<()> {
+        sqlx::query("DELETE FROM text_channels WHERE channel_id = $1")
+            .bind(channel_id.get() as i64)
+            .execute(self.pool())
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn record_voice_participation(
         &self,
         guild_id: GuildId,
