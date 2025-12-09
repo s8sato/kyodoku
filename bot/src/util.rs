@@ -27,8 +27,10 @@ pub async fn ensure_isbn_text_channel(
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let desired_name = truncate_name(&channel_name);
     let desired_topic = format!("Discussion channel for {}", metadata.display_title());
-    let text_categories = state.config.text_category_ids;
-    let default_category = text_categories[8];
+    let text_categories = &state.config.text_category_ids;
+    let default_category = *text_categories
+        .last()
+        .expect("at least one text category must be configured");
 
     if let Some(channel_id) = state
         .store
@@ -172,6 +174,7 @@ pub async fn handle_voice_state_transition(
     ctx: &Context,
     state: Arc<BotState>,
     guild_id: GuildId,
+    user_id: UserId,
     old: Option<ChannelId>,
     new: Option<ChannelId>,
 ) -> Result<()> {
@@ -181,6 +184,17 @@ pub async fn handle_voice_state_transition(
 
     if let Some(channel_id) = new {
         maybe_notify_activation(ctx.clone(), state.clone(), guild_id, channel_id).await?;
+
+        if let Some(isbn) = state
+            .store
+            .get_isbn_for_voice_channel(channel_id)
+            .await?
+        {
+            state
+                .store
+                .record_voice_participation(guild_id, &isbn, user_id)
+                .await?;
+        }
     }
 
     Ok(())
@@ -305,15 +319,24 @@ async fn move_channel_to_top(
     Ok(())
 }
 
-fn current_voice_members(ctx: &Context, guild_id: GuildId, channel_id: ChannelId) -> usize {
+pub fn current_voice_members(ctx: &Context, guild_id: GuildId, channel_id: ChannelId) -> usize {
+    current_voice_member_ids(ctx, guild_id, channel_id).len()
+}
+
+pub fn current_voice_member_ids(
+    ctx: &Context,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Vec<UserId> {
     if let Some(guild) = ctx.cache.guild(guild_id) {
         guild
             .voice_states
             .values()
             .filter(|state| state.channel_id == Some(channel_id))
-            .count()
+            .map(|state| state.user_id)
+            .collect()
     } else {
-        0
+        Vec::new()
     }
 }
 

@@ -32,23 +32,20 @@ private PostgreSQL/Redis endpoints you provision.
    - Populate the remaining variables from `bot/.env.example` via secrets. Example:
      ```bash
      fly secrets set \
-       DISCORD_TOKEN=... \
-       APPLICATION_ID=... \
-       VOICE_CHANNEL_CATEGORY_ID=... \
-      TEXT_CATEGORY_1_ID=... \
-      TEXT_CATEGORY_2_ID=... \
-      TEXT_CATEGORY_3_ID=... \
-      TEXT_CATEGORY_4_ID=... \
-      TEXT_CATEGORY_5_ID=... \
-      TEXT_CATEGORY_6_ID=... \
-      TEXT_CATEGORY_7_ID=... \
-      TEXT_CATEGORY_8_ID=... \
-      TEXT_CATEGORY_9_ID=... \
+     DISCORD_TOKEN=... \
+      APPLICATION_ID=... \
+      VOICE_CHANNEL_CATEGORY_ID=... \
+     # Configure TEXT_CATEGORY_1_ID and continue consecutively (e.g., TEXT_CATEGORY_2_ID ... up to TEXT_CATEGORY_9_ID) \
+     TEXT_CATEGORY_1_ID=... \
+     TEXT_CATEGORY_2_ID=... \
+     TEXT_CATEGORY_3_ID=... \
       COMMAND_INPUT_CHANNEL_ID=... \
       VOICE_CLEANUP_DELAY_SECONDS=60 \
       TEXT_ACTIVITY_EVAL_INTERVAL_SECONDS=86400 \
+      TEXT_ACTIVITY_PRESENCE_FACTOR=2.0 \
       TEXT_CATEGORY_SWAP_COUNT=10 \
       TEXT_CATEGORY_PRUNE_COUNT=10 \
+      TEXT_CATEGORY_CAPACITY=50 \
       TIME_ZONE=UTC \
       WATCHLIST_LIMIT=30 \
       -a kyodoku-bot-<suffix>
