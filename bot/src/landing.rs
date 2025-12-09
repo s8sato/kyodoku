@@ -60,30 +60,30 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
 
     let swap_line_en = if category_count > 1 {
         format!(
-            "- The bottom **{swap_count}** channels in category n swap with the top **{swap_count}** channels in category n+1 (n = 1..{max_category})\\n",
+            "- The bottom **{swap_count}** channels in category n swap with the top **{swap_count}** channels in category n+1 (n = 1..{max_category})",
             swap_count = config.text_category_swap_count,
             max_category = category_count - 1
         )
     } else {
-        "- Swapping is skipped when only one text category is configured\\n".to_string()
+        "- Swapping is skipped when only one text category is configured".to_string()
     };
     let prune_line_en = format!(
-        "- The bottom **{prune_count}** channels in category {last_category} are deleted each cycle\\n\\n",
+        "- The bottom **{prune_count}** channels in category {last_category} are deleted each cycle",
         prune_count = config.text_category_prune_count,
         last_category = last_category
     );
 
     let swap_line_ja = if category_count > 1 {
         format!(
-            "- カテゴリnの下位 **{swap_count}** 件とカテゴリn+1の上位 **{swap_count}** 件を入れ替えます（n = 1〜{max_category}）\\n",
+            "- カテゴリnの下位 **{swap_count}** 件とカテゴリn+1の上位 **{swap_count}** 件を入れ替えます（n = 1〜{max_category}）",
             swap_count = config.text_category_swap_count,
             max_category = category_count - 1
         )
     } else {
-        "- カテゴリが1つの場合、入れ替え処理はスキップされます\\n".to_string()
+        "- カテゴリが1つの場合、入れ替え処理はスキップされます".to_string()
     };
     let prune_line_ja = format!(
-        "- カテゴリ{last_category}の下位 **{prune_count}** 件は各サイクルで削除されます\\n\\n",
+        "- カテゴリ{last_category}の下位 **{prune_count}** 件は各サイクルで削除されます",
         prune_count = config.text_category_prune_count,
         last_category = last_category
     );
@@ -112,8 +112,8 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "## :file_cabinet: Text Channel Ladder\n",
             "- New ISBN channels start at the top of category {last_category} (each category holds up to {category_capacity} channels)\n",
             "- Activity scores refresh every **{eval_interval} seconds** and are written to channel topics\n",
-            "{swap_line_en}",
-            "{prune_line_en}",
+            "{swap_line_en}\n",
+            "{prune_line_en}\n\n",
             "## :zipper_mouth: Spoiler-Friendly Posts\n",
             "When you want to share impressions without revealing plot points, mark spoilers with `||double bars||`:\n",
             "```\n",
@@ -162,8 +162,8 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "## :file_cabinet: テキストチャンネルの階層\n",
             "- 新しいISBNチャンネルはカテゴリ{last_category}の先頭に配置されます（各カテゴリの上限は{category_capacity}件）\n",
             "- アクティビティスコアは **{eval_interval} 秒** ごとに更新され、トピックに明示されます\n",
-            "{swap_line_ja}",
-            "{prune_line_ja}",
+            "{swap_line_ja}\n",
+            "{prune_line_ja}\n\n",
             "## :zipper_mouth: ネタバレへの配慮\n",
             "文芸書などでネタバレを控えながら投稿したい場合、ネタバレ部分をスポイラーとしてマークできます：\n",
             "```\n",
