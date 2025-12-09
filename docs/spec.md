@@ -61,6 +61,16 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ## 5. Lifecycle
 
+### Channel Budget & Layout Constraints
+
+* Server-wide channel usage is bounded by two configurable caps:
+  * `MAX_SERVER_CHANNELS` (default: **480**) — safety ceiling to keep the server comfortably under Discord’s 500-channel limit.
+  * `TEXT_CHANNEL_BUDGET` (default: **430**) — reserves headroom for non-text operational channels so text channels stay below 450 in aggregate.
+* Text channels always live inside managed categories so they appear visually below operational and voice categories.
+  * A pool of text categories is created with the prefix from `TEXT_CATEGORY_PREFIX` (default: `isbn-text`) and anchored beneath the voice category via `TEXT_CATEGORY_POSITION_BASE` (default: a value lower than voice categories).
+  * Each category is capped at **50** channels. When the active category reaches the cap, a new category in the pool is created and used for subsequent text channels.
+* Channel creation first attempts to free quota (archiving or deleting stale channels) before rejecting an `/open` request. If quotas cannot be satisfied after cleanup, the bot returns an informative error mentioning which cap would be exceeded.
+
 ### Voice Channel Creation
 
 1. User executes `/open <code>`.
@@ -69,9 +79,10 @@ The project follows a *spec-first* approach — this document serves as the sour
 
 ### Channel Placement
 
-* ISBN text channels belong to the category provided via the `TEXT_CHANNEL_CATEGORY_ID` environment variable.
+* ISBN text channels belong to the managed text category pool and are always placed below voice-related categories for visual separation.
 * ISBN voice channels belong to the category provided via the `VOICE_CHANNEL_CATEGORY_ID` environment variable.
 * Channel names exceeding the length limit are truncated with an ellipsis suffix to make the shortening visible.
+* Newly created or recently active text channels are moved to the top of the first text category in the pool to keep them prominent.
 
 ### Session Deletion
 
@@ -92,11 +103,18 @@ The project follows a *spec-first* approach — this document serves as the sour
 * `TEXT_CHANNEL_CAPACITY` (default: **150**) limits how many ISBN channels remain in the active `TEXT_CHANNEL_CATEGORY_ID`.
 * A background task runs every `ARCHIVE_POLL_INTERVAL_SECONDS` (default: **86400** seconds) to:
   * Move channels beyond the configured capacity into the archived category.
+  * Ignore channels that have messages within `TEXT_CHANNEL_ACTIVITY_LOOKBACK_SECONDS` (default: **604800** seconds = 7 days) so recently active threads are not penalized.
   * Persist archive metadata (archived time, expiration, and original category) in the database and compute expiration from the stored timestamp and `ARCHIVE_GRACE_PERIOD_SECONDS` (default: **5184000** seconds = 60 days).
+  * Sort candidates by recent message activity so channels with sustained discussion are archived last, minimizing churn for active threads.
   * Delete archived channels whose grace period has elapsed.
   * Optionally refresh the channel topic with `format_archive_topic` for user guidance; topics may be edited freely because state is sourced from the database.
 * Archived channel topics present timestamps in the configured `TIME_ZONE` (IANA name, default: `UTC`).
 * When `/open` is executed for an ISBN whose channel is archived, the channel is moved back to the top of the text category, and its archived record is deleted so the channel becomes active again.
+* Imminent deletions are announced before the channel is removed:
+  * `TEXT_CHANNEL_DELETE_NOTICE_SECONDS` (default: **259200** seconds = 72 hours) defines how long a channel stays in a pending-delete state after the first warning.
+  * The warning is posted in-channel and DM’d to watchlist subscribers so they can act; both messages include the scheduled deletion time and a quick “Extend” button that resets the expiration by `TEXT_CHANNEL_EXTENSION_SECONDS` (default: **604800** seconds = 7 days).
+  * Running `/open` for the channel’s ISBN also cancels the pending delete and returns the channel to the top of the active pool; this is one of the supported extension paths.
+* When capacity is constrained (text or total channel budget), the archiver preemptively queues the stalest archived channels into the notice window to free space while honoring the deletion grace period.
 
 ### Command Intake Moderation
 
