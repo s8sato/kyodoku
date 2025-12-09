@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, GuildId, UserId};
 use sqlx::{postgres::PgPoolOptions, FromRow, PgPool};
+use std::collections::HashMap;
 
 use crate::isbn::IsbnMetadata;
 
@@ -169,6 +170,32 @@ impl Store {
         Ok(record.map(|(id,)| ChannelId::new(id as u64)))
     }
 
+    pub async fn list_text_channels(&self) -> Result<Vec<DbTextChannel>> {
+        let records = sqlx::query_as::<_, DbTextChannel>(
+            "SELECT guild_id, channel_id, isbn_13 FROM text_channels",
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(records)
+    }
+
+    pub async fn list_watcher_counts(&self) -> Result<HashMap<(GuildId, String), usize>> {
+        let records = sqlx::query_as::<_, (i64, String, i64)>(
+            "SELECT guild_id, isbn_13, COUNT(*) as watcher_count FROM watchlist GROUP BY guild_id, isbn_13",
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        let mut counts = HashMap::new();
+        for (guild_id, isbn_13, count) in records {
+            let count = usize::try_from(count).unwrap_or(0);
+            counts.insert((GuildId::new(guild_id as u64), isbn_13), count);
+        }
+
+        Ok(counts)
+    }
+
     pub async fn start_voice_session(
         &self,
         guild_id: GuildId,
@@ -324,4 +351,11 @@ pub struct DbArchivedChannel {
     pub original_category_id: i64,
     pub archived_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct DbTextChannel {
+    pub guild_id: i64,
+    pub channel_id: i64,
+    pub isbn_13: String,
 }
