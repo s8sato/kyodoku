@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -6,17 +7,74 @@ use async_trait::async_trait;
 use redis::AsyncCommands;
 use serenity::all::{
     ButtonStyle, ChannelId, ChannelType, Context, CreateActionRow, CreateButton, CreateChannel,
-    CreateMessage, EditChannel, GuildId, UserId,
+    CreateMessage, EditChannel, GuildChannel, GuildId, UserId,
 };
 use tokio::time::sleep;
 use tracing::{error, info, warn};
 
+use crate::archive;
 use crate::isbn::IsbnMetadata;
 use crate::BotState;
 
 pub const WATCH_ACTION_PREFIX: &str = "watch:";
+pub const EXTEND_ACTION_PREFIX: &str = "archive:extend:";
 const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
 const READING_SESSION_ACTIVATION_THRESHOLD: usize = 1;
+pub const TEXT_CATEGORY_LIMIT: usize = 50;
+
+pub async fn ensure_text_category_pool(
+    http: &serenity::http::Http,
+    guild_id: GuildId,
+    state: &BotState,
+) -> Result<Vec<GuildChannel>> {
+    let mut categories: Vec<_> = guild_id
+        .channels(http)
+        .await?
+        .into_values()
+        .filter(|ch| ch.kind == ChannelType::Category)
+        .filter(|ch| {
+            ch.name.starts_with(&state.config.text_category_prefix)
+                || ch.id == state.config.text_channel_category_id
+        })
+        .collect();
+
+    if categories.is_empty() {
+        let name = format!("{}-1", state.config.text_category_prefix);
+        let category = guild_id
+            .create_channel(
+                http,
+                CreateChannel::new(name)
+                    .kind(ChannelType::Category)
+                    .position(
+                        u16::try_from(state.config.text_category_position_base).unwrap_or(u16::MAX),
+                    ),
+            )
+            .await?;
+
+        categories.push(category);
+    }
+
+    categories.sort_by_key(|cat| (cat.position, cat.id));
+    Ok(categories)
+}
+
+async fn enforce_channel_quota(
+    ctx: &Context,
+    guild_id: GuildId,
+    state: &BotState,
+    created_new_category: bool,
+) -> Result<()> {
+    archive::enforce_channel_budgets(
+        &ctx.http,
+        guild_id,
+        state,
+        archive::BudgetReservation {
+            new_text_channels: 1,
+            new_categories: if created_new_category { 1 } else { 0 },
+        },
+    )
+    .await
+}
 
 pub async fn ensure_isbn_text_channel(
     ctx: &Context,
@@ -24,6 +82,12 @@ pub async fn ensure_isbn_text_channel(
     metadata: &IsbnMetadata,
     state: Arc<BotState>,
 ) -> Result<ChannelId> {
+    let categories = ensure_text_category_pool(&ctx.http, guild_id, &state).await?;
+    let primary_category = categories
+        .first()
+        .map(|cat| cat.id)
+        .unwrap_or(state.config.text_channel_category_id);
+
     let channel_name = format!("{}（{}）", metadata.display_title(), metadata.isbn_13);
     let desired_name = truncate_name(&channel_name);
     let desired_topic = format!("Discussion channel for {}", metadata.display_title());
@@ -51,8 +115,8 @@ pub async fn ensure_isbn_text_channel(
                 let was_archived =
                     guild_channel.parent_id == Some(state.config.archived_channel_category_id);
 
-                if guild_channel.parent_id != Some(state.config.text_channel_category_id) {
-                    edits = edits.category(state.config.text_channel_category_id);
+                if guild_channel.parent_id != Some(primary_category) {
+                    edits = edits.category(primary_category);
                     needs_update = true;
                 }
 
@@ -60,8 +124,7 @@ pub async fn ensure_isbn_text_channel(
                     guild_channel.id.edit(&ctx.http, edits).await?;
                 }
 
-                move_channel_to_top(ctx, guild_channel.id, state.config.text_channel_category_id)
-                    .await?;
+                move_channel_to_top(ctx, guild_channel.id, primary_category).await?;
 
                 if was_archived {
                     state.store.clear_archived_channel(guild_channel.id).await?;
@@ -72,13 +135,59 @@ pub async fn ensure_isbn_text_channel(
         }
     }
 
+    let channels = guild_id.channels(&ctx.http).await?;
+    let mut occupancy: HashMap<ChannelId, usize> = HashMap::new();
+    for channel in channels.values() {
+        if let Some(parent) = channel.parent_id {
+            *occupancy.entry(parent).or_default() += 1;
+        }
+    }
+
+    let mut target_category = None;
+    for category in &categories {
+        let count = occupancy.get(&category.id).copied().unwrap_or_default();
+        if count < TEXT_CATEGORY_LIMIT {
+            target_category = Some(category.id);
+            break;
+        }
+    }
+
+    let needs_new_category = target_category.is_none();
+
+    enforce_channel_quota(ctx, guild_id, &state, needs_new_category).await?;
+
+    let target_category = if let Some(category) = target_category {
+        category
+    } else {
+        let name = format!(
+            "{}-{}",
+            state.config.text_category_prefix,
+            categories.len() + 1
+        );
+        let category = guild_id
+            .create_channel(
+                &ctx.http,
+                CreateChannel::new(name)
+                    .kind(ChannelType::Category)
+                    .position(
+                        u16::try_from(
+                            state.config.text_category_position_base + categories.len() as i64,
+                        )
+                        .unwrap_or(u16::MAX),
+                    ),
+            )
+            .await?;
+
+        category.id
+    };
+
     let channel = CreateChannel::new(desired_name)
         .kind(ChannelType::Text)
         .topic(desired_topic)
-        .category(state.config.text_channel_category_id);
+        .category(target_category);
     let channel = guild_id.create_channel(&ctx.http, channel).await?;
 
-    move_channel_to_top(ctx, channel.id, state.config.text_channel_category_id).await?;
+    move_channel_to_top(ctx, channel.id, primary_category).await?;
 
     let components = vec![CreateActionRow::Buttons(vec![CreateButton::new(format!(
         "{WATCH_ACTION_PREFIX}add:{}",
@@ -467,7 +576,7 @@ fn format_metadata_post(metadata: &IsbnMetadata) -> String {
     content
 }
 
-async fn send_dm(
+pub async fn send_dm(
     http: &serenity::http::Http,
     user_id: UserId,
     content: &str,

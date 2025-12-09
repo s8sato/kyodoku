@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use serenity::all::{
-    CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
+    ChannelId, CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
     ComponentInteraction, Context as SerenityContext, CreateActionRow, CreateCommand,
     CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseFollowup,
     CreateInteractionResponseMessage, GuildId, InteractionResponseFlags, MessageFlags,
 };
 use tracing::debug;
 
+use crate::archive;
 use crate::isbn;
 use crate::util;
 use crate::BotState;
@@ -154,6 +155,37 @@ pub async fn handle_component_interaction(
     component: &ComponentInteraction,
     state: Arc<BotState>,
 ) -> Result<()> {
+    if let Some(channel_id_raw) = component
+        .data
+        .custom_id
+        .strip_prefix(util::EXTEND_ACTION_PREFIX)
+    {
+        let response = match channel_id_raw.parse::<u64>().ok().map(ChannelId::new) {
+            Some(channel_id) => {
+                archive::extend_archived_channel(&ctx.http, state.clone(), channel_id).await
+            }
+            None => Err(anyhow!("Invalid channel identifier in extend action.")),
+        };
+
+        let content = match response {
+            Ok(message) => message,
+            Err(err) => format!("❌ {err}"),
+        };
+
+        component
+            .create_response(
+                ctx,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content(content)
+                        .flags(InteractionResponseFlags::EPHEMERAL),
+                ),
+            )
+            .await?;
+
+        return Ok(());
+    }
+
     let Some(custom_id) = component
         .data
         .custom_id

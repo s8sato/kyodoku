@@ -296,7 +296,10 @@ mod tests {
     use super::*;
 
     fn repeat_text(text: &str, count: usize) -> String {
-        std::iter::repeat(text).take(count).collect::<Vec<_>>().join("")
+        std::iter::repeat(text)
+            .take(count)
+            .collect::<Vec<_>>()
+            .join("")
     }
 
     #[test]
