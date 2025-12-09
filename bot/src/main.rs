@@ -211,7 +211,7 @@ impl serenity::prelude::EventHandler for Handler {
             return;
         };
 
-        if let Err(err) = landing::refresh_landing_posts(&ctx, &state.config, ready.user.id).await {
+        if let Err(err) = landing::refresh_landing_posts(&ctx, &state.config).await {
             warn!("failed to refresh landing posts: {err:?}");
         }
     }
