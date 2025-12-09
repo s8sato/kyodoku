@@ -367,22 +367,6 @@ impl Store {
             .map(|(id,)| UserId::new(id as u64))
             .collect())
     }
-
-    pub async fn get_notification_channel(&self, guild_id: GuildId) -> Result<Option<ChannelId>> {
-        let record: Option<(i64,)> =
-            sqlx::query_as("SELECT notification_channel_id FROM guilds WHERE guild_id = $1")
-                .bind(guild_id.get() as i64)
-                .fetch_optional(self.pool())
-                .await?;
-
-        Ok(record.and_then(|(id,)| {
-            if id == 0 {
-                None
-            } else {
-                Some(ChannelId::new(id as u64))
-            }
-        }))
-    }
 }
 
 #[derive(Debug, Clone, FromRow)]

@@ -24,12 +24,10 @@ pub async fn run_archive_loop(http: Arc<Http>, state: Arc<BotState>) {
 }
 
 async fn archive_cycle(http: &Http, state: Arc<BotState>) -> Result<()> {
-    let guilds = http.get_guilds(None, None).await?;
+    let guild_id = state.config.home_guild_id;
 
-    for guild in guilds {
-        if let Err(err) = process_guild(http, guild.id, state.clone()).await {
-            error!("Archive processing failed for guild {}: {err:?}", guild.id);
-        }
+    if let Err(err) = process_guild(http, guild_id, state.clone()).await {
+        error!("Archive processing failed for guild {}: {err:?}", guild_id);
     }
 
     Ok(())

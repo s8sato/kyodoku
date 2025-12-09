@@ -13,8 +13,8 @@ use chrono_tz::Tz;
 use dotenvy::dotenv;
 use redis::Client as RedisClient;
 use serenity::all::{
-    ApplicationId, ChannelId, Client, Context, GatewayIntents, Interaction, Message, MessageType,
-    Ready, VoiceState,
+    ApplicationId, ChannelId, Client, Context, GatewayIntents, GuildId, Interaction, Message,
+    MessageType, Ready, VoiceState,
 };
 use serenity::prelude::TypeMapKey;
 use songbird::SerenityInit;
@@ -29,6 +29,7 @@ use crate::store::Store;
 pub struct Config {
     pub discord_token: String,
     pub application_id: u64,
+    pub home_guild_id: GuildId,
     pub database_url: String,
     pub redis_url: String,
     pub voice_cleanup_delay_seconds: u64,
@@ -48,6 +49,7 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         let discord_token = std::env::var("DISCORD_TOKEN")?;
         let application_id = std::env::var("APPLICATION_ID")?.parse()?;
+        let home_guild_id = Self::required_guild_id_from_env("GUILD_ID", "home guild")?;
         let database_url = std::env::var("DATABASE_URL")?;
         let redis_url = std::env::var("REDIS_URL")?;
         let voice_cleanup_delay_seconds = std::env::var("VOICE_CLEANUP_DELAY_SECONDS")
@@ -126,6 +128,7 @@ impl Config {
         Ok(Self {
             discord_token,
             application_id,
+            home_guild_id,
             database_url,
             redis_url,
             voice_cleanup_delay_seconds,
@@ -161,6 +164,30 @@ impl Config {
     fn required_channel_id_from_env(name: &str, label: &str) -> Result<ChannelId> {
         let Some(id) = Self::channel_id_from_env(name, label)? else {
             return Err(anyhow!("Missing required {label} category id in {name}"));
+        };
+
+        Ok(id)
+    }
+
+    fn guild_id_from_env(name: &str, label: &str) -> Result<Option<GuildId>> {
+        let raw = match std::env::var(name) {
+            Ok(value) if !value.trim().is_empty() => value,
+            Ok(_) | Err(std::env::VarError::NotPresent) => return Ok(None),
+            Err(err) => return Err(err.into()),
+        };
+
+        match raw.parse::<u64>() {
+            Ok(id) => Ok(Some(GuildId::new(id))),
+            Err(err) => {
+                warn!("Ignoring invalid {label} id '{raw}': {err:?}");
+                Ok(None)
+            }
+        }
+    }
+
+    fn required_guild_id_from_env(name: &str, label: &str) -> Result<GuildId> {
+        let Some(id) = Self::guild_id_from_env(name, label)? else {
+            return Err(anyhow!("Missing required {label} id in {name}"));
         };
 
         Ok(id)
@@ -248,6 +275,10 @@ impl serenity::prelude::EventHandler for Handler {
             return;
         };
 
+        if message.guild_id != Some(state.config.home_guild_id) {
+            return;
+        }
+
         if message.channel_id != channel_id {
             return;
         }
@@ -308,6 +339,10 @@ impl serenity::prelude::EventHandler for Handler {
         let Some(guild_id) = guild else {
             return;
         };
+
+        if guild_id != state.config.home_guild_id {
+            return;
+        }
 
         let old_channel = old.and_then(|v| v.channel_id);
         let new_channel = new.channel_id;

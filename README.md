@@ -16,7 +16,7 @@ requirements.
 
 ## Getting Started
 
-1. Copy [`bot/.env.example`](bot/.env.example) to `bot/.env` and fill in your Discord credentials and optional channel/category IDs.
+1. Copy [`bot/.env.example`](bot/.env.example) to `bot/.env` and fill in your Discord credentials, the target `GUILD_ID`, and optional channel/category IDs.
 2. In the Discord Developer Portal, open your bot settings and **disable the Public Bot toggle** to prevent unwanted invitations.
 3. Start the development stack:
 
@@ -24,7 +24,7 @@ requirements.
    docker compose -f infra/docker/docker-compose.yml up --build
    ```
 
-4. Invite the Discord application to your guild with `Send Messages`, `Embed Links`, `Manage Messages`, and `Manage Channels` bot permissions so it can tidy the command intake channel and create the per-ISBN channels used by `/open`, then interact using the `/open` and `/watch` commands.
+4. Invite the Discord application to your configured guild with `Send Messages`, `Embed Links`, `Manage Messages`, and `Manage Channels` bot permissions so it can tidy the command intake channel and create the per-ISBN channels used by `/open`, then interact using the `/open` and `/watch` commands.
 
 The bot crate can also be run locally with `cargo run -p kyodoku-bot` once PostgreSQL and Redis are available.
 
