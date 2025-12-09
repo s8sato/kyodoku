@@ -37,7 +37,6 @@ pub struct Config {
     pub archive_poll_interval_seconds: u64,
     pub archive_retention_seconds: u64,
     pub archive_delete_notice_lead_seconds: u64,
-    pub text_channel_extension_seconds: u64,
     pub command_input_channel_id: Option<ChannelId>,
     pub text_channel_category_id: ChannelId,
     pub text_category_prefix: String,
@@ -86,11 +85,6 @@ impl Config {
                 .and_then(|value| value.parse().ok())
                 .filter(|value| *value > 0)
                 .unwrap_or(259_200);
-        let text_channel_extension_seconds = std::env::var("TEXT_CHANNEL_EXTENSION_SECONDS")
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .filter(|value| *value > 0)
-            .unwrap_or(604_800);
         let active_text_channel_capacity = std::env::var("ACTIVE_TEXT_CHANNEL_CAPACITY")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -139,7 +133,6 @@ impl Config {
             archive_poll_interval_seconds,
             archive_retention_seconds,
             archive_delete_notice_lead_seconds,
-            text_channel_extension_seconds,
             command_input_channel_id,
             text_channel_category_id,
             text_category_prefix,

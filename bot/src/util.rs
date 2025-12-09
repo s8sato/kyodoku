@@ -17,7 +17,6 @@ use crate::isbn::IsbnMetadata;
 use crate::BotState;
 
 pub const WATCH_ACTION_PREFIX: &str = "watch:";
-pub const EXTEND_ACTION_PREFIX: &str = "archive:extend:";
 const CLEANUP_TTL_BUFFER_SECONDS: u64 = 60;
 const READING_SESSION_ACTIVATION_THRESHOLD: usize = 1;
 pub const TEXT_CATEGORY_LIMIT: usize = 50;

@@ -50,7 +50,6 @@ Use this guide to deploy **kyodoku** to [Railway](https://railway.app) using the
       ARCHIVE_POLL_INTERVAL_SECONDS=86400 \
       ARCHIVE_RETENTION_SECONDS=5184000 \
       ARCHIVE_DELETE_NOTICE_LEAD_SECONDS=259200 \
-      TEXT_CHANNEL_EXTENSION_SECONDS=604800 \
       TIME_ZONE=UTC \
       WATCHLIST_LIMIT=30 \
       --service kyodoku-bot

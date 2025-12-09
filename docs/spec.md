@@ -103,7 +103,6 @@ The project follows a *spec-first* approach — this document serves as the sour
 * `ACTIVE_TEXT_CHANNEL_CAPACITY` (default: **150**) limits how many ISBN channels remain in the active pool before overflow moves to the archive category.
 * A background task runs every `ARCHIVE_POLL_INTERVAL_SECONDS` (default: **86400** seconds) to:
   * Move channels beyond the configured capacity into the archived category.
-  * Ignore channels that have messages within `TEXT_CHANNEL_ACTIVITY_LOOKBACK_SECONDS` (default: **604800** seconds = 7 days) so recently active threads are not penalized.
   * Persist archive metadata (archived time, expiration, and original category) in the database and compute expiration from the stored timestamp and `ARCHIVE_RETENTION_SECONDS` (default: **5184000** seconds = 60 days).
   * Sort candidates by recent message activity so channels with sustained discussion are archived last, minimizing churn for active threads.
   * Delete archived channels whose grace period has elapsed.
@@ -112,8 +111,8 @@ The project follows a *spec-first* approach — this document serves as the sour
 * When `/open` is executed for an ISBN whose channel is archived, the channel is moved back to the top of the text category, and its archived record is deleted so the channel becomes active again.
 * Imminent deletions are announced before the channel is removed:
   * `ARCHIVE_DELETE_NOTICE_LEAD_SECONDS` (default: **259200** seconds = 72 hours) defines the minimum lead time between the first deletion warning and removal.
-  * The warning is posted in-channel and DM’d to watchlist subscribers so they can act; both messages include the scheduled deletion time and a quick “Extend” button that resets the expiration by `TEXT_CHANNEL_EXTENSION_SECONDS` (default: **604800** seconds = 7 days).
-  * Running `/open` for the channel’s ISBN also cancels the pending delete and returns the channel to the top of the active pool; this is one of the supported extension paths.
+  * The warning is posted in-channel and DM’d to watchlist subscribers so they can act; both messages include the scheduled deletion time and remind members to run `/open` with the ISBN to restore the channel before removal.
+  * Running `/open` for the channel’s ISBN cancels the pending delete and returns the channel to the top of the active pool; this is the only supported escape path for archived or deleting channels.
 * When capacity is constrained (text or total channel budget), the archiver preemptively queues the stalest archived channels into the notice window to free space while honoring the deletion grace period.
 
 ### Command Intake Moderation
