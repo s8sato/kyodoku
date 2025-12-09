@@ -312,16 +312,15 @@ impl serenity::prelude::EventHandler for Handler {
         let old_channel = old.and_then(|v| v.channel_id);
         let new_channel = new.channel_id;
 
-        if let Err(err) =
-            util::handle_voice_state_transition(
-                &ctx,
-                state,
-                guild_id,
-                new.user_id,
-                old_channel,
-                new_channel,
-            )
-            .await
+        if let Err(err) = util::handle_voice_state_transition(
+            &ctx,
+            state,
+            guild_id,
+            new.user_id,
+            old_channel,
+            new_channel,
+        )
+        .await
         {
             error!("voice state handling failed: {err:?}");
         }

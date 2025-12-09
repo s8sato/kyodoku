@@ -185,11 +185,7 @@ pub async fn handle_voice_state_transition(
     if let Some(channel_id) = new {
         maybe_notify_activation(ctx.clone(), state.clone(), guild_id, channel_id).await?;
 
-        if let Some(isbn) = state
-            .store
-            .get_isbn_for_voice_channel(channel_id)
-            .await?
-        {
+        if let Some(isbn) = state.store.get_isbn_for_voice_channel(channel_id).await? {
             state
                 .store
                 .record_voice_participation(guild_id, &isbn, user_id)
