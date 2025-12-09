@@ -68,7 +68,7 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
         "- Swapping is skipped when only one text category is configured".to_string()
     };
     let prune_line_en = format!(
-        "- The bottom **{prune_count}** channels in category {last_category} are deleted each cycle",
+        "- The bottom **{prune_count}** channels in category **{last_category}** are deleted each cycle",
         prune_count = config.text_category_prune_count,
         last_category = last_category
     );
@@ -83,7 +83,7 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
         "- カテゴリが1つの場合、入れ替え処理はスキップされます".to_string()
     };
     let prune_line_ja = format!(
-        "- カテゴリ{last_category}の下位 **{prune_count}** 件は各サイクルで削除されます",
+        "- カテゴリ **{last_category}** の下位 **{prune_count}** 件は各サイクルで削除されます",
         prune_count = config.text_category_prune_count,
         last_category = last_category
     );
@@ -110,7 +110,7 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "Or:\n",
             "Right-click server name → **Privacy Settings → Allow DMs from other members in this server**\n\n",
             "## :file_cabinet: Text Channel Ladder\n",
-            "- New ISBN channels start at the top of category {last_category} (each category holds up to {category_capacity} channels)\n",
+            "- New text channels start at the top of category **{last_category}** (each category holds up to **{category_capacity}** channels)\n",
             "- Activity scores refresh every **{eval_interval} seconds** and are written to channel topics\n",
             "{swap_line_en}\n",
             "{prune_line_en}\n\n",
@@ -151,7 +151,7 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "- あなたのウォッチリストを表示します\n",
             "- ウォッチ中の本のボイスチャンネルがアクティブ（最初の参加者が入室）になると **DM 通知**が届きます\n",
             "### `/watch add <ISBN1> <ISBN2> ...`\n",
-            "- ウォッチリストに本を追加します（複数指定可、1ユーザーあたり最大 **{watchlist_limit} 冊**）\n",
+            "- ウォッチリストに本を追加します（複数指定可、1ユーザーあたり最大 **{watchlist_limit}** 冊）\n",
             "### `/watch remove <ISBN1> <ISBN2> ...`\n",
             "- ウォッチリストから本を削除します（複数指定可）\n\n",
             "## :bell: DM 通知を受け取るには\n",
@@ -160,7 +160,7 @@ fn desired_posts(config: &Config) -> (Vec<String>, Vec<String>) {
             "または：\n",
             "サーバー名を右クリック → **プライバシー設定 → このサーバーのメンバーからのDMを許可**\n\n",
             "## :file_cabinet: テキストチャンネルの階層\n",
-            "- 新しいISBNチャンネルはカテゴリ{last_category}の先頭に配置されます（各カテゴリの上限は{category_capacity}件）\n",
+            "- 新しいテキストチャンネルはカテゴリ **{last_category}** の先頭に配置されます（各カテゴリの上限は **{category_capacity}** 件）\n",
             "- アクティビティスコアは **{eval_interval} 秒** ごとに更新され、トピックに明示されます\n",
             "{swap_line_ja}\n",
             "{prune_line_ja}\n\n",
