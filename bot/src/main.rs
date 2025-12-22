@@ -364,6 +364,9 @@ impl serenity::prelude::EventHandler for Handler {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Print to stderr immediately to verify binary is running
+    eprintln!("=== kyodoku-bot binary starting ===");
+
     dotenv().ok();
     tracing_subscriber::fmt()
         .with_env_filter(
