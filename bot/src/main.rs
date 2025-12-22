@@ -371,9 +371,43 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let config = Config::from_env()?;
-    let store = Store::connect(&config.database_url).await?;
-    let redis = RedisClient::open(config.redis_url.as_str())?;
+    info!("Starting kyodoku-bot...");
+
+    let config = match Config::from_env() {
+        Ok(config) => {
+            info!("Configuration loaded successfully");
+            config
+        }
+        Err(err) => {
+            error!("Failed to load configuration: {err:?}");
+            return Err(err);
+        }
+    };
+
+    info!("Connecting to database...");
+    let store = match Store::connect(&config.database_url).await {
+        Ok(store) => {
+            info!("Database connected successfully");
+            store
+        }
+        Err(err) => {
+            error!("Failed to connect to database: {err:?}");
+            return Err(err);
+        }
+    };
+
+    info!("Connecting to Redis...");
+    let redis = match RedisClient::open(config.redis_url.as_str()) {
+        Ok(redis) => {
+            info!("Redis client initialized");
+            redis
+        }
+        Err(err) => {
+            error!("Failed to initialize Redis client: {err:?}");
+            return Err(err.into());
+        }
+    };
+
     let http_client = reqwest::Client::builder()
         .user_agent("kyodoku-bot/0.1")
         .build()?;
@@ -385,20 +419,32 @@ async fn main() -> Result<()> {
         http_client,
     });
 
+    info!("Initializing Discord client...");
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_VOICE_STATES
         | GatewayIntents::GUILD_MESSAGES;
-    let mut client = Client::builder(&config.discord_token, intents)
+    let mut client = match Client::builder(&config.discord_token, intents)
         .application_id(ApplicationId::new(config.application_id))
         .event_handler(Handler)
         .register_songbird()
-        .await?;
+        .await
+    {
+        Ok(client) => {
+            info!("Discord client initialized successfully");
+            client
+        }
+        Err(err) => {
+            error!("Failed to initialize Discord client: {err:?}");
+            return Err(err.into());
+        }
+    };
 
     {
         let mut data = client.data.write().await;
         data.insert::<StateKey>(state.clone());
     }
 
+    info!("Starting Discord client connection...");
     let shard_manager = client.shard_manager.clone();
     let client_handle = tokio::spawn(async move { client.start().await });
     tokio::pin!(client_handle);
