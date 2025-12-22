@@ -178,11 +178,11 @@ fn is_valid_isbn13(isbn: &str) -> bool {
 }
 
 pub async fn lookup_metadata(client: &Client, normalized: &NormalizedIsbn) -> Result<IsbnMetadata> {
-    if let Some(meta) = fetch_google_books(client, normalized).await? {
+    if let Some(meta) = fetch_open_library(client, normalized).await? {
         return Ok(meta);
     }
 
-    if let Some(meta) = fetch_open_library(client, normalized).await? {
+    if let Some(meta) = fetch_google_books(client, normalized).await? {
         return Ok(meta);
     }
 
